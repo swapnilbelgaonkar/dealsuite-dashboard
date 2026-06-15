@@ -2613,7 +2613,6 @@ function renderContractBuilder(ctId){
         </div>
       </div>
 
-      <!-- Right: Preview -->
       <div class="builder-preview">
         <div class="preview-doc">
           <div style="background:var(--text-primary);padding:36px 40px;color:#fff;">
@@ -2812,7 +2811,6 @@ function renderInvoiceBuilder(invId){
         </div>
       </div>
 
-      <!-- Right: Preview -->
       <div class="builder-preview">
         <div class="preview-doc" id="inv-preview">
           ${buildInvoicePreview(inv)}
@@ -3729,7 +3727,6 @@ window.renderInvoiceBuilder = function(invId){
       <div class="builder-panel" style="overflow-y:auto;">
         <div style="padding:20px;display:flex;flex-direction:column;gap:16px;">
 
-          <!-- Invoice Type -->
           <div class="form-group">
             <label class="form-label">Invoice Type</label>
             <div style="display:flex;gap:6px;flex-wrap:wrap;" id="inv-type-btns">
@@ -3777,7 +3774,6 @@ window.renderInvoiceBuilder = function(invId){
             </div>
           </div>
 
-          <!-- Line Items -->
           <div>
             <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">Line Items</div>
             <div style="overflow-x:auto;">
@@ -3841,7 +3837,6 @@ window.renderInvoiceBuilder = function(invId){
         </div>
       </div>
 
-      <!-- Right: Preview -->
       <div class="builder-preview">
         <div class="preview-doc" id="inv-preview">
           ${buildInvoicePreview(inv)}
@@ -3997,7 +3992,6 @@ window.renderContractBuilder = function(ctId){
         </div>
       </div>
 
-      <!-- Right: Preview -->
       <div class="builder-preview">
         <div class="preview-doc">
           <div style="background:var(--text-primary);padding:36px 40px;color:#fff;">
@@ -5300,6 +5294,573 @@ setTimeout(()=>{
   };
 }, 200);
 
+// ── TEMPLATES — fully functional ──
+// Seed content for templates if missing
+const TEMPLATE_DEFAULTS = {
+  't1': { sections:['Cover Page','Introduction','Scope of Work','Deliverables','Timeline','Fee Summary','Terms & Conditions'], sectionContent:{ 'Introduction':'Thank you for the opportunity to work together. We specialize in creating impactful digital experiences that help businesses grow.', 'Scope of Work':'• Full website design and development\n• Brand identity refinement\n• UX/UI design for all pages\n• Mobile-responsive build\n• SEO on-page optimization', 'Deliverables':'• Design mockups (Figma)\n• Responsive website (up to 10 pages)\n• Style guide document\n• Source code handoff\n• 30-day post-launch support', 'Timeline':'Week 1–2: Discovery & wireframes\nWeek 3–4: Visual design concepts\nWeek 5–6: Development\nWeek 7: QA & testing\nWeek 8: Launch', 'Terms & Conditions':'50% deposit required before project commencement. Remaining 50% due on delivery. Revisions beyond 3 rounds billed at hourly rate.' }, lineItems:[{desc:'Web Design',qty:1,rate:3500,tax:9},{desc:'Development',qty:1,rate:4500,tax:9}] },
+  't2': { sections:['Cover Page','Introduction','Scope of Work','Monthly Deliverables','Pricing','Terms & Conditions'], sectionContent:{ 'Introduction':'We are excited to propose an ongoing retainer engagement to support your marketing goals with consistent, high-quality output.', 'Scope of Work':'• Monthly content calendar\n• Social media management (4 platforms)\n• Email marketing campaigns\n• Performance reporting\n• Strategy calls (2x/month)', 'Monthly Deliverables':'• 20 social media posts\n• 4 email newsletters\n• 1 monthly analytics report\n• 2 blog articles', 'Pricing':'Monthly retainer: $3,000/month\nMinimum commitment: 3 months\nPayment due: 1st of each month', 'Terms & Conditions':'30-day notice required for cancellation. All assets created remain property of client upon full payment.' }, lineItems:[{desc:'Monthly Retainer',qty:1,rate:3000,tax:9}] },
+  't3': { clauses:['Scope of Work','Payment Terms','Intellectual Property','Confidentiality','Termination','Limitation of Liability'], clauseContent:{ 'Scope of Work': STD_CLAUSES?.['Scope of Work']||'The Service Provider agrees to perform the services described herein in a professional and timely manner.', 'Payment Terms': STD_CLAUSES?.['Payment Terms']||'A deposit of 50% is due upon signing. The remaining balance is due upon project completion.', 'Intellectual Property': STD_CLAUSES?.['Intellectual Property']||'Upon full payment, all intellectual property rights for the deliverables are assigned to the Client.', 'Confidentiality': STD_CLAUSES?.['Confidentiality']||'Both parties agree to keep confidential all proprietary information.', 'Termination': STD_CLAUSES?.['Termination']||'Either party may terminate this agreement with 14 days written notice.', 'Limitation of Liability': 'In no event shall either party be liable for any indirect, incidental, or consequential damages arising out of or related to this agreement.' } },
+  't4': { clauses:['Engagement Scope','Fees & Payment','Intellectual Property','Confidentiality','Independent Contractor','Governing Law'], clauseContent:{ 'Engagement Scope':'This Master Services Agreement governs all work orders placed by Client with Agency. Each project will be governed by a separate Statement of Work.', 'Fees & Payment':'Agency rates are set forth in each SOW. Payment due net-30. Overdue accounts accrue 1.5% monthly interest.', 'Intellectual Property':'Work product becomes property of Client upon receipt of full payment. Agency retains rights to show work in portfolio.', 'Confidentiality':'Both parties shall maintain confidentiality of all non-public information for 3 years post-termination.', 'Independent Contractor':'Agency is an independent contractor. Nothing in this agreement creates an employment, partnership, or joint venture relationship.', 'Governing Law':'This agreement shall be governed by the laws of the State of [State], without regard to conflict of law provisions.' } },
+  't5': { lineItems:[{desc:'Project Design & Development',qty:1,rate:5000,tax:9},{desc:'Content Integration',qty:1,rate:800,tax:9}] },
+  't6': { lineItems:[{desc:'Monthly Retainer — Marketing Services',qty:1,rate:3000,tax:9}] },
+};
+
+// Initialize template content from defaults
+(function(){
+  db.templates.forEach(t=>{ if(!t.content && TEMPLATE_DEFAULTS[t.id]) t.content = TEMPLATE_DEFAULTS[t.id]; });
+})();
+
+window.renderTemplates = function(){
+  const cats = ['proposals','contracts','invoices','emails'];
+  let _activeCat = window._tplCat||'all';
+
+  const buildGrid = (filter) => db.templates
+    .filter(t=>filter==='all'||t.category===filter)
+    .map(t=>`
+      <div class="card" style="padding:20px;display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:var(--radius);">
+        <div class="flex justify-between items-start mb-2">
+          <span class="badge badge-${t.category==='proposals'?'purple':t.category==='contracts'?'success':t.category==='invoices'?'info':'muted'}">${t.category}</span>
+          <span style="font-size:11px;color:var(--text-muted);">${t.uses||0} uses</span>
+        </div>
+        <div style="font-size:14px;font-weight:700;margin:8px 0 4px;color:var(--text-primary);">${escHtml(t.name)}</div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;flex:1;margin-bottom:14px;">${escHtml(t.desc)}</div>
+        <div class="flex gap-2 flex-wrap">
+          <button class="btn btn-primary btn-sm" style="flex:1;" onclick="_useTemplate('${t.id}')"><i data-lucide="arrow-right" style="width:12px;height:12px;"></i> Use</button>
+          <button class="btn btn-secondary btn-sm" onclick="_editTemplate('${t.id}')"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
+          <button class="btn btn-secondary btn-sm" onclick="_duplicateTemplate('${t.id}')"><i data-lucide="copy" style="width:12px;height:12px;"></i></button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger-text);" onclick="_deleteTemplate('${t.id}')"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
+        </div>
+      </div>`).join('');
+
+  document.getElementById('page-templates').innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">Templates</div><div class="page-subtitle">${db.templates.length} templates — click Edit to customize, Use to create from template</div></div>
+      <button class="btn btn-primary" onclick="_newTemplate()"><i data-lucide="plus" style="width:14px;height:14px;"></i> New Template</button>
+    </div>
+    <div class="filter-chips mb-4">
+      <div class="chip ${_activeCat==='all'?'active':''}" onclick="window._tplCat='all';renderTemplates()">All</div>
+      ${cats.map(c=>`<div class="chip ${_activeCat===c?'active':''}" onclick="window._tplCat='${c}';renderTemplates()">${c.charAt(0).toUpperCase()+c.slice(1)}</div>`).join('')}
+    </div>
+    <div class="grid-4" id="template-grid">${buildGrid(_activeCat)}</div>`;
+  lucide.createIcons();
+};
+
+window._useTemplate = function(tplId){
+  const t = db.templates.find(x=>x.id===tplId);
+  if(!t){ showToast('Template not found','error'); return; }
+  t.uses = (t.uses||0)+1;
+  const c = t.content||{};
+
+  if(t.category==='proposals'||t.category==='emails'){
+    activeProposal = {
+      id: 'prop_'+Date.now(),
+      title: t.name,
+      clientId: '', status: 'draft', amount: 0, currency: 'USD',
+      sections: c.sections||['Cover Page','Introduction','Scope of Work','Deliverables','Timeline','Fee Summary','Terms & Conditions'],
+      sectionContent: {...(c.sectionContent||{})},
+      created: new Date().toISOString().split('T')[0],
+      expires: ''
+    };
+    lineItems = c.lineItems ? [...c.lineItems.map(li=>({...li}))] : [{desc:'',qty:1,rate:0,tax:9}];
+    db.proposals.push(activeProposal);
+    saveToStorage();
+    showToast('Proposal created from template!','success');
+    navigateTo('proposal-builder',{proposalId:activeProposal.id});
+  } else if(t.category==='contracts'){
+    window._ctActiveTab = 'clauses';
+    activeContract = {
+      id: 'ct_'+Date.now(),
+      title: t.name,
+      clientId: '', status: 'draft', value: 0,
+      created: new Date().toISOString().split('T')[0],
+      expires: '',
+      clauses: c.clauses ? [...c.clauses] : Object.keys(STD_CLAUSES||{}).slice(0,5),
+      clauseContent: {...(c.clauseContent||{})},
+      signed: false
+    };
+    db.contracts.push(activeContract);
+    saveToStorage();
+    showToast('Contract created from template!','success');
+    navigateTo('contract-builder',{contractId:activeContract.id});
+  } else if(t.category==='invoices'){
+    const num = 'INV-'+String(db.invoices.length+1).padStart(4,'0');
+    activeInvoice = {
+      id: 'inv_'+Date.now(), num,
+      clientId: '', project: t.name, amount: 0, tax: 0, discount: 0, total: 0,
+      issued: new Date().toISOString().split('T')[0],
+      due: '', status: 'draft', notes: '', type: 'one-time', lateFee: 1.5
+    };
+    invLineItems = c.lineItems ? [...c.lineItems.map(li=>({...li}))] : [{desc:'',qty:1,rate:0,tax:9}];
+    activeInvoice.lineItems = [...invLineItems];
+    db.invoices.push(activeInvoice);
+    saveToStorage();
+    showToast('Invoice created from template!','success');
+    navigateTo('invoice-builder',{invoiceId:activeInvoice.id});
+  }
+};
+
+window._editTemplate = function(tplId){
+  const t = db.templates.find(x=>x.id===tplId);
+  if(!t){ showToast('Template not found','error'); return; }
+  const c = t.content || (t.content = {});
+  const isProposal = t.category==='proposals'||t.category==='emails';
+  const isContract = t.category==='contracts';
+  const isInvoice  = t.category==='invoices';
+
+  // Build editor content based on category
+  let editorHtml = '';
+  if(isProposal){
+    const sections = c.sections||['Introduction','Scope of Work','Deliverables','Timeline','Terms & Conditions'];
+    editorHtml = `
+      <div style="display:flex;flex-direction:column;gap:12px;max-height:55vh;overflow-y:auto;">
+        <div class="form-group"><label class="form-label">Template Name</label><input class="form-control" id="tpl-name" value="${escHtml(t.name)}"></div>
+        <div class="form-group"><label class="form-label">Description</label><input class="form-control" id="tpl-desc" value="${escHtml(t.desc)}"></div>
+        ${sections.filter(s=>s!=='Cover Page'&&s!=='Fee Summary').map(s=>`
+          <div class="form-group">
+            <label class="form-label">${escHtml(s)}</label>
+            <textarea class="form-control" rows="4" id="tpl-sec-${s.replace(/\s+/g,'-').toLowerCase()}">${escHtml((c.sectionContent||{})[s]||_propSectionDefault(s)||'')}</textarea>
+          </div>`).join('')}
+        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-top:8px;">Default Line Items</div>
+        ${(c.lineItems||[{desc:'',qty:1,rate:0,tax:9}]).map((li,i)=>`
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;align-items:center;">
+            <input class="form-control" placeholder="Description" id="tpl-li-desc-${i}" value="${escHtml(li.desc)}">
+            <input class="form-control" type="number" placeholder="Qty" id="tpl-li-qty-${i}" value="${li.qty}">
+            <input class="form-control" type="number" placeholder="Rate" id="tpl-li-rate-${i}" value="${li.rate}">
+            <input class="form-control" type="number" placeholder="Tax%" id="tpl-li-tax-${i}" value="${li.tax}">
+          </div>`).join('')}
+      </div>`;
+  } else if(isContract){
+    const clauses = c.clauses||Object.keys(STD_CLAUSES||{}).slice(0,5);
+    editorHtml = `
+      <div style="display:flex;flex-direction:column;gap:12px;max-height:55vh;overflow-y:auto;">
+        <div class="form-group"><label class="form-label">Template Name</label><input class="form-control" id="tpl-name" value="${escHtml(t.name)}"></div>
+        <div class="form-group"><label class="form-label">Description</label><input class="form-control" id="tpl-desc" value="${escHtml(t.desc)}"></div>
+        ${clauses.map(cl=>`
+          <div class="form-group">
+            <label class="form-label">${escHtml(cl)}</label>
+            <textarea class="form-control" rows="4" id="tpl-cl-${cl.replace(/\s+/g,'-').toLowerCase()}">${escHtml((c.clauseContent||{})[cl]||STD_CLAUSES?.[cl]||'')}</textarea>
+          </div>`).join('')}
+      </div>`;
+  } else if(isInvoice){
+    editorHtml = `
+      <div style="display:flex;flex-direction:column;gap:12px;max-height:55vh;overflow-y:auto;">
+        <div class="form-group"><label class="form-label">Template Name</label><input class="form-control" id="tpl-name" value="${escHtml(t.name)}"></div>
+        <div class="form-group"><label class="form-label">Description</label><input class="form-control" id="tpl-desc" value="${escHtml(t.desc)}"></div>
+        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;">Line Items</div>
+        ${(c.lineItems||[{desc:'',qty:1,rate:0,tax:9}]).map((li,i)=>`
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;">
+            <input class="form-control" placeholder="Description" id="tpl-li-desc-${i}" value="${escHtml(li.desc)}">
+            <input class="form-control" type="number" placeholder="Qty" id="tpl-li-qty-${i}" value="${li.qty}">
+            <input class="form-control" type="number" placeholder="Rate $" id="tpl-li-rate-${i}" value="${li.rate}">
+            <input class="form-control" type="number" placeholder="Tax%" id="tpl-li-tax-${i}" value="${li.tax}">
+          </div>`).join('')}
+      </div>`;
+  }
+
+  openModal(`
+    <div class="modal-header">
+      <span class="modal-title">Edit Template — ${escHtml(t.name)}</span>
+      <button class="btn btn-ghost btn-icon btn-sm" onclick="closeModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="modal-body">${editorHtml}</div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="_saveTemplateEdit('${tplId}')"><i data-lucide="save" style="width:13px;height:13px;"></i> Save Template</button>
+    </div>`);
+  lucide.createIcons();
+};
+
+window._saveTemplateEdit = function(tplId){
+  const t = db.templates.find(x=>x.id===tplId);
+  if(!t) return;
+  if(!t.content) t.content = {};
+  const c = t.content;
+  const isProposal = t.category==='proposals'||t.category==='emails';
+  const isContract = t.category==='contracts';
+  const isInvoice  = t.category==='invoices';
+
+  const nameEl = document.getElementById('tpl-name');
+  const descEl = document.getElementById('tpl-desc');
+  if(nameEl) t.name = nameEl.value;
+  if(descEl) t.desc = descEl.value;
+
+  if(isProposal){
+    const sections = c.sections||['Introduction','Scope of Work','Deliverables','Timeline','Terms & Conditions'];
+    if(!c.sectionContent) c.sectionContent = {};
+    sections.filter(s=>s!=='Cover Page'&&s!=='Fee Summary').forEach(s=>{
+      const el = document.getElementById('tpl-sec-'+s.replace(/\s+/g,'-').toLowerCase());
+      if(el) c.sectionContent[s] = el.value;
+    });
+    // Read line items
+    const lis = [];
+    for(let i=0;i<10;i++){
+      const d=document.getElementById('tpl-li-desc-'+i);
+      if(!d) break;
+      lis.push({desc:d.value, qty:+(document.getElementById('tpl-li-qty-'+i)?.value||1), rate:+(document.getElementById('tpl-li-rate-'+i)?.value||0), tax:+(document.getElementById('tpl-li-tax-'+i)?.value||9)});
+    }
+    if(lis.length) c.lineItems = lis;
+  } else if(isContract){
+    const clauses = c.clauses||Object.keys(STD_CLAUSES||{}).slice(0,5);
+    if(!c.clauseContent) c.clauseContent = {};
+    clauses.forEach(cl=>{
+      const el = document.getElementById('tpl-cl-'+cl.replace(/\s+/g,'-').toLowerCase());
+      if(el) c.clauseContent[cl] = el.value;
+    });
+  } else if(isInvoice){
+    const lis = [];
+    for(let i=0;i<10;i++){
+      const d=document.getElementById('tpl-li-desc-'+i);
+      if(!d) break;
+      lis.push({desc:d.value, qty:+(document.getElementById('tpl-li-qty-'+i)?.value||1), rate:+(document.getElementById('tpl-li-rate-'+i)?.value||0), tax:+(document.getElementById('tpl-li-tax-'+i)?.value||9)});
+    }
+    if(lis.length) c.lineItems = lis;
+  }
+
+  saveToStorage();
+  closeModal();
+  renderTemplates();
+  showToast('Template saved!','success');
+};
+
+window._duplicateTemplate = function(tplId){
+  const t = db.templates.find(x=>x.id===tplId);
+  if(!t) return;
+  const copy = JSON.parse(JSON.stringify(t));
+  copy.id = 'tpl_'+Date.now();
+  copy.name = t.name+' (Copy)';
+  copy.uses = 0;
+  db.templates.push(copy);
+  saveToStorage();
+  renderTemplates();
+  showToast('Template duplicated!','success');
+};
+
+window._deleteTemplate = function(tplId){
+  openConfirm('Delete Template','Delete this template? This cannot be undone.',()=>{
+    db.templates = db.templates.filter(t=>t.id!==tplId);
+    saveToStorage();
+    renderTemplates();
+    showToast('Template deleted','success');
+  });
+};
+
+window._newTemplate = function(){
+  openModal(`
+    <div class="modal-header"><span class="modal-title">New Template</span><button class="btn btn-ghost btn-icon btn-sm" onclick="closeModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <div class="form-group"><label class="form-label">Template Name *</label><input class="form-control" id="new-tpl-name" placeholder="e.g. Photography Proposal"></div>
+      <div class="form-group"><label class="form-label">Description</label><input class="form-control" id="new-tpl-desc" placeholder="Brief description…"></div>
+      <div class="form-group"><label class="form-label">Type</label>
+        <select class="form-control" id="new-tpl-cat">
+          <option value="proposals">Proposal</option>
+          <option value="contracts">Contract</option>
+          <option value="invoices">Invoice</option>
+          <option value="emails">Email</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="
+        const n=document.getElementById('new-tpl-name').value.trim();
+        if(!n){showToast('Enter a name','error');return;}
+        const t={id:'tpl_'+Date.now(),name:n,desc:document.getElementById('new-tpl-desc').value,category:document.getElementById('new-tpl-cat').value,uses:0,content:{}};
+        db.templates.push(t);saveToStorage();closeModal();renderTemplates();_editTemplate(t.id);showToast('Template created!','success');
+      "><i data-lucide="plus" style="width:13px;height:13px;"></i> Create & Edit</button>
+    </div>`);
+  lucide.createIcons();
+};
+
+// ── PROPOSAL POST-SAVE ACTIONS (PDF + Portal) ──
+window._proposalPostSaveModal = function(p){
+  const cl = getClient(p.clientId);
+  const portalLink = window.location.origin + window.location.pathname + '?portal=' + p.id;
+  openModal(`
+    <div class="modal-header">
+      <span class="modal-title">Proposal Saved!</span>
+      <button class="btn btn-ghost btn-icon btn-sm" onclick="closeModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <div style="background:var(--success-bg);border-radius:var(--radius);padding:14px;display:flex;align-items:center;gap:12px;">
+        <i data-lucide="check-circle" style="width:20px;height:20px;color:var(--success-text);flex-shrink:0;"></i>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--success-text);">${escHtml(p.title)} is ready</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Status: ${p.status} · ${p.clientId?'Client: '+escHtml(cl.name):'No client assigned'}</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <button onclick="closeModal();_downloadProposalPDF('${p.id}')" style="padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);cursor:pointer;text-align:center;transition:all .15s;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+          <i data-lucide="download" style="width:22px;height:22px;color:var(--primary);display:block;margin:0 auto 8px;"></i>
+          <div style="font-size:13px;font-weight:600;">Download PDF</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Save as PDF file</div>
+        </button>
+        <button onclick="closeModal();_openClientPortalView('${p.id}')" style="padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);cursor:pointer;text-align:center;transition:all .15s;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+          <i data-lucide="external-link" style="width:22px;height:22px;color:var(--teal);display:block;margin:0 auto 8px;"></i>
+          <div style="font-size:13px;font-weight:600;">Client Portal</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">View as client sees it</div>
+        </button>
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Client Shareable Link</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input class="form-control" value="${portalLink}" readonly id="portal-link-inp" style="background:var(--bg);font-size:12px;color:var(--text-muted);">
+          <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="navigator.clipboard?.writeText(document.getElementById('portal-link-inp').value);showToast('Link copied!','success')">
+            <i data-lucide="copy" style="width:13px;height:13px;"></i> Copy
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Client can view, download the PDF, and accept or decline the proposal.</div>
+      </div>
+
+      ${p.status==='accepted'?`
+      <div style="background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--radius);padding:12px;">
+        <div style="font-size:13px;font-weight:600;color:var(--primary);margin-bottom:4px;"><i data-lucide="file-check" style="width:14px;height:14px;display:inline;margin-right:4px;"></i>Proposal Accepted!</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">Ready to create a contract for this project?</div>
+        <button class="btn btn-primary btn-sm" onclick="closeModal();_createContractFromProposal('${p.id}')">
+          <i data-lucide="scroll-text" style="width:13px;height:13px;"></i> Create Contract
+        </button>
+      </div>`:
+      `<div style="font-size:12px;color:var(--text-muted);text-align:center;">Once the client accepts the proposal, you can create a contract from it.</div>`}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" onclick="closeModal();_saveProposalNow();sendProposal(activeProposal.id)"><i data-lucide="send" style="width:13px;height:13px;"></i> Send to Client</button>
+    </div>`);
+  lucide.createIcons();
+};
+
+// PDF via print
+window._downloadProposalPDF = function(propId){
+  const p = db.proposals.find(x=>x.id===propId)||activeProposal;
+  if(!p){ showToast('Proposal not found','error'); return; }
+  const cl = getClient(p.clientId);
+  const sc = p.sectionContent||{};
+  const coverColor = p.coverColor||'#5347CE';
+  const sub = (p.lineItems||lineItems).reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax = (p.lineItems||lineItems).reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  const total = sub+tax;
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>${p.title}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;font-size:13px;}
+      .cover{background:linear-gradient(135deg,${coverColor},${coverColor}cc);padding:56px 48px;color:#fff;}
+      .cover-label{font-size:10px;font-weight:700;letter-spacing:.12em;opacity:.7;margin-bottom:10px;}
+      .cover-title{font-size:28px;font-weight:800;margin-bottom:10px;}
+      .cover-sub{font-size:14px;opacity:.85;}
+      .body{padding:40px 48px;}
+      .section{margin-bottom:28px;}
+      .section-label{font-size:10px;font-weight:700;color:${coverColor};text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;}
+      .section-content{font-size:13px;color:#6B7280;line-height:1.8;white-space:pre-line;}
+      table{width:100%;border-collapse:collapse;margin-bottom:14px;}
+      th{padding:8px 10px;text-align:left;font-size:10px;color:#9CA3AF;font-weight:600;border-bottom:1px solid #E5E7EB;text-transform:uppercase;}
+      td{padding:8px 10px;border-bottom:1px solid #F3F4F6;}
+      .totals{float:right;width:220px;font-size:13px;}
+      .totals-row{display:flex;justify-content:space-between;padding:5px 0;}
+      .totals-total{display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid ${coverColor};font-size:16px;font-weight:700;color:${coverColor};}
+      .actions{margin-top:32px;padding-top:20px;border-top:2px solid #E5E7EB;display:flex;gap:12px;}
+      .btn-accept{background:${coverColor};color:#fff;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;border:none;}
+      .btn-decline{background:#F3F4F6;color:#6B7280;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;border:none;}
+      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    </style></head><body>
+    <div class="cover">
+      <div class="cover-label">PROPOSAL</div>
+      <div class="cover-title">${p.title}</div>
+      ${p.tagline?`<div class="cover-sub">${p.tagline}</div>`:''}
+      ${cl.name?`<div class="cover-sub" style="margin-top:12px;">Prepared for <strong>${cl.name}</strong>${cl.company?' · '+cl.company:''}</div>`:''}
+      ${p.expires?`<div style="margin-top:12px;font-size:11px;opacity:.7;">Valid until ${p.expires}</div>`:''}
+    </div>
+    <div class="body">
+      ${p.sections.filter(s=>s!=='Cover Page').map(s=>`
+        <div class="section">
+          <div class="section-label">${s}</div>
+          ${s==='Fee Summary'?`
+            <table><thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Tax</th><th>Total</th></tr></thead>
+            <tbody>${(p.lineItems||lineItems).map(li=>`<tr><td>${li.desc}</td><td>${li.qty}</td><td>$${li.rate}</td><td>${li.tax}%</td><td>$${(li.qty*li.rate).toLocaleString()}</td></tr>`).join('')}</tbody></table>
+            <div class="totals">
+              <div class="totals-row"><span style="color:#6B7280">Subtotal</span><span>$${sub.toLocaleString()}</span></div>
+              <div class="totals-row"><span style="color:#6B7280">Tax</span><span>$${tax.toFixed(2)}</span></div>
+              <div class="totals-total"><span>Total</span><span>$${total.toFixed(2)}</span></div>
+            </div><div style="clear:both;"></div>`:
+          `<div class="section-content">${sc[s]||_propSectionDefault(s)||''}</div>`}
+        </div>`).join('')}
+    </div>
+    <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>
+  </body></html>`;
+
+  const win = window.open('','_blank','width=900,height=700');
+  if(win){ win.document.write(html); win.document.close(); }
+  else { showToast('Allow popups to download PDF','error'); }
+};
+
+// Client portal view for specific proposal
+window._openClientPortalView = function(propId){
+  const p = db.proposals.find(x=>x.id===propId)||activeProposal;
+  if(!p){ showToast('Proposal not found','error'); return; }
+  const cl = getClient(p.clientId);
+  const sc = p.sectionContent||{};
+  const coverColor = p.coverColor||'#5347CE';
+  const sub = (p.lineItems||lineItems).reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax = (p.lineItems||lineItems).reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  const total = sub+tax;
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${p.title} — DealSuite</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Inter',sans-serif;background:#F4F7FA;color:#111827;min-height:100vh;}
+      .top-bar{background:#fff;border-bottom:1px solid #E5E7EB;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;}
+      .logo{font-size:16px;font-weight:800;color:${coverColor};}
+      .doc{max-width:780px;margin:32px auto;background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08);overflow:hidden;}
+      .cover{background:linear-gradient(135deg,${coverColor},${coverColor}cc);padding:56px 48px;color:#fff;}
+      .cover-label{font-size:10px;font-weight:700;letter-spacing:.12em;opacity:.7;margin-bottom:10px;}
+      .cover-title{font-size:28px;font-weight:800;margin-bottom:10px;}
+      .body{padding:40px 48px;}
+      .section{margin-bottom:28px;}
+      .section-label{font-size:10px;font-weight:700;color:${coverColor};text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;}
+      .section-content{font-size:14px;color:#6B7280;line-height:1.8;white-space:pre-line;}
+      table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:13px;}
+      th{padding:8px 10px;text-align:left;font-size:11px;color:#9CA3AF;font-weight:600;border-bottom:1px solid #E5E7EB;text-transform:uppercase;}
+      td{padding:10px;border-bottom:1px solid #F3F4F6;}
+      .actions{margin-top:32px;padding:24px 48px;background:#F9FAFB;border-top:1px solid #E5E7EB;display:flex;gap:12px;align-items:center;justify-content:center;}
+      .btn-accept{background:${coverColor};color:#fff;padding:14px 32px;border-radius:8px;font-size:14px;font-weight:700;border:none;cursor:pointer;transition:opacity .15s;}
+      .btn-accept:hover{opacity:.9;}
+      .btn-decline{background:#fff;color:#6B7280;padding:14px 24px;border-radius:8px;font-size:14px;font-weight:600;border:1px solid #E5E7EB;cursor:pointer;}
+      .btn-pdf{background:#fff;color:#374151;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid #E5E7EB;cursor:pointer;display:flex;align-items:center;gap:6px;}
+      .status-bar{background:#fff;border-bottom:1px solid #E5E7EB;padding:10px 24px;text-align:center;font-size:12px;color:#6B7280;}
+      @media(max-width:600px){.cover,.body,.actions{padding-left:20px;padding-right:20px;}.doc{margin:0;border-radius:0;}}
+      @media print{.top-bar,.status-bar,.actions{display:none!important;}.doc{box-shadow:none;border-radius:0;margin:0;}}
+    </style></head><body>
+    <div class="top-bar">
+      <div class="logo">DealSuite</div>
+      <button class="btn-pdf" onclick="window.print()">⬇ Download PDF</button>
+    </div>
+    <div class="status-bar">This proposal was sent by <strong>${escHtml(db.user.name)}</strong> · ${p.expires?'Valid until '+p.expires:'Open proposal'}</div>
+    <div class="doc">
+      <div class="cover">
+        <div class="cover-label">PROPOSAL</div>
+        <div class="cover-title">${escHtml(p.title)}</div>
+        ${p.tagline?`<div style="font-size:14px;opacity:.85;margin-top:6px;">${escHtml(p.tagline)}</div>`:''}
+        ${cl.name?`<div style="font-size:13px;opacity:.8;margin-top:14px;">Prepared for <strong>${escHtml(cl.name)}</strong>${cl.company?' · '+escHtml(cl.company):''}</div>`:''}
+        ${p.expires?`<div style="margin-top:12px;font-size:11px;opacity:.7;display:inline-block;background:rgba(255,255,255,.15);padding:4px 12px;border-radius:99px;">Valid until ${p.expires}</div>`:''}
+      </div>
+      <div class="body">
+        ${p.sections.filter(s=>s!=='Cover Page').map(s=>`
+          <div class="section">
+            <div class="section-label">${escHtml(s)}</div>
+            ${s==='Fee Summary'?`
+              <table><thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Tax</th><th>Amount</th></tr></thead>
+              <tbody>${(p.lineItems||lineItems).map(li=>`<tr><td>${escHtml(li.desc)||'—'}</td><td>${li.qty}</td><td>$${li.rate.toLocaleString()}</td><td>${li.tax}%</td><td style="font-weight:600;">$${(li.qty*li.rate).toLocaleString()}</td></tr>`).join('')}</tbody></table>
+              <div style="float:right;width:220px;font-size:13px;">
+                <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="color:#6B7280">Subtotal</span><span>$${sub.toLocaleString()}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="color:#6B7280">Tax</span><span>$${tax.toFixed(2)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid ${coverColor};font-size:16px;font-weight:700;color:${coverColor};"><span>Total</span><span>$${total.toFixed(2)}</span></div>
+              </div><div style="clear:both;"></div>`:
+            `<div class="section-content">${escHtml(sc[s]||_propSectionDefault(s)||'')}</div>`}
+          </div>`).join('')}
+      </div>
+      <div class="actions">
+        <button class="btn-accept" onclick="document.querySelector('.actions').innerHTML='<div style=\\'font-size:16px;font-weight:700;color:#0F9E9D;text-align:center;\\'>✓ Proposal Accepted! The service provider will be in touch shortly.</div>'">✓ Accept Proposal</button>
+        <button class="btn-decline" onclick="document.querySelector('.actions').innerHTML='<div style=\\'color:#6B7280;\\'>Proposal declined. The service provider has been notified.</div>'">Decline</button>
+        <button class="btn-pdf" onclick="window.print()">⬇ PDF</button>
+      </div>
+    </div>
+  </body></html>`;
+
+  const win = window.open('','_blank','width=900,height=700');
+  if(win){ win.document.write(html); win.document.close(); }
+  else { showToast('Allow popups to open client portal','error'); }
+};
+
+// Create contract from accepted proposal
+window._createContractFromProposal = function(propId){
+  const p = db.proposals.find(x=>x.id===propId)||activeProposal;
+  if(!p){ showToast('Proposal not found','error'); return; }
+  const sc = p.sectionContent||{};
+  // Build contract with relevant content from proposal
+  activeContract = {
+    id: 'ct_'+Date.now(),
+    title: p.title + ' — Service Agreement',
+    clientId: p.clientId,
+    status: 'draft',
+    value: p.amount||0,
+    created: new Date().toISOString().split('T')[0],
+    expires: p.expires||'',
+    proposalId: p.id,
+    clauses: ['Scope of Work','Payment Terms','Intellectual Property','Confidentiality','Termination'],
+    clauseContent: {
+      'Scope of Work': sc['Scope of Work'] || STD_CLAUSES['Scope of Work'] || '',
+      'Payment Terms': sc['Terms & Conditions'] || STD_CLAUSES['Payment Terms'] || '',
+      'Intellectual Property': STD_CLAUSES['Intellectual Property'] || '',
+      'Confidentiality': STD_CLAUSES['Confidentiality'] || '',
+      'Termination': STD_CLAUSES['Termination'] || '',
+    },
+    signed: false
+  };
+  db.contracts.push(activeContract);
+  window._ctActiveTab = 'clauses';
+  saveToStorage();
+  showToast('Contract created from proposal!','success');
+  navigateTo('contract-builder', {contractId: activeContract.id});
+};
+
+// Patch _saveProposalNow to show post-save modal
+const __origSaveProposal = window._saveProposalNow;
+window._saveProposalNow = function(skipModal){
+  if(!activeProposal) return;
+  const p = activeProposal;
+  const sub = lineItems.reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax = lineItems.reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  p.amount = sub+tax;
+  p.lineItems = [...lineItems];
+  const idx = db.proposals.findIndex(x=>x.id===p.id);
+  if(idx>=0) db.proposals[idx] = p;
+  else db.proposals.push(p);
+  saveToStorage();
+  if(!skipModal) _proposalPostSaveModal(p);
+  else showToast('Proposal saved!','success');
+};
+
+// Approve proposal button — adds to proposal builder header
+const __origRenderPB = window.renderProposalBuilder;
+window.renderProposalBuilder = function(propId){
+  __origRenderPB(propId);
+  // After render, inject approve button if not accepted
+  setTimeout(()=>{
+    const p = activeProposal;
+    if(!p) return;
+    const bar = document.querySelector('#page-proposal-builder .flex.items-center.justify-between .flex.gap-2');
+    if(bar && !bar.querySelector('.btn-approve')){
+      const approveBtn = document.createElement('button');
+      approveBtn.className = 'btn btn-sm btn-approve';
+      approveBtn.style.cssText = `background:${p.status==='accepted'?'var(--success-bg)':'var(--warning-bg)'};color:${p.status==='accepted'?'var(--success-text)':'var(--warning-text)'};border:1px solid ${p.status==='accepted'?'var(--success-text)':'var(--warning-text)'};`;
+      approveBtn.innerHTML = p.status==='accepted'
+        ? '<i data-lucide="check-circle" style="width:13px;height:13px;"></i> Accepted'
+        : '<i data-lucide="thumbs-up" style="width:13px;height:13px;"></i> Approve';
+      approveBtn.onclick = ()=>{
+        if(p.status==='accepted'){
+          openConfirm('Create Contract','This proposal is accepted. Create a contract from it?', ()=>_createContractFromProposal(p.id));
+        } else {
+          openConfirm('Approve Proposal','Mark this proposal as accepted? This will not auto-create a contract — you can do that separately.', ()=>{
+            p.status='accepted';
+            _saveProposalNow(true);
+            renderProposalBuilder(p.id);
+            showToast('Proposal approved!','success');
+          });
+        }
+      };
+      // Insert before Save Draft button
+      const saveBtn = bar.querySelector('.btn-secondary');
+      if(saveBtn) bar.insertBefore(approveBtn, saveBtn);
+      else bar.prepend(approveBtn);
+      lucide.createIcons();
+    }
+  }, 100);
+};
+
 // ── SAVE on every important operation ──
 // Wrap key mutation functions to auto-persist
 ['saveProposal','saveContract','saveInvoice','deleteProposal','deleteContract','deleteInvoice',
@@ -5421,7 +5982,6 @@ window.renderProposalBuilder = function(propId){
     </div>
 
     <div class="builder-wrap">
-      <!-- Left: Section list + editor -->
       <div class="builder-panel" style="overflow-y:auto;">
         <div style="padding:14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
           <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;">Sections</span>
@@ -5440,7 +6000,6 @@ window.renderProposalBuilder = function(propId){
         </div>
       </div>
 
-      <!-- Right: Live Preview -->
       <div class="builder-preview">
         <div class="preview-doc" id="prop-preview">
           ${_buildPropPreview(p)}
@@ -5688,9 +6247,7 @@ window.renderContractBuilder = function(ctId){
     </div>
 
     <div class="builder-wrap">
-      <!-- Left panel: tabs -->
       <div class="builder-panel" style="overflow-y:auto;">
-        <!-- Tab bar -->
         <div style="display:flex;border-bottom:1px solid var(--border);padding:0 8px;">
           ${[['clauses','Clauses'],['signature','Signature'],['settings','Settings']].map(([t,l])=>`
             <button onclick="window._ctActiveTab='${t}';renderContractBuilder(activeContract.id)"
@@ -5699,7 +6256,6 @@ window.renderContractBuilder = function(ctId){
         </div>
 
         ${(window._ctActiveTab||'clauses')==='clauses' ? `
-        <!-- Clause library -->
         <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
           <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;">Clauses</span>
           <div style="display:flex;gap:6px;">
@@ -5720,7 +6276,6 @@ window.renderContractBuilder = function(ctId){
         </div>
 
         ` : (window._ctActiveTab==='signature' ? `
-        <!-- Signature panel -->
         <div style="padding:20px;display:flex;flex-direction:column;gap:16px;">
           <div style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Your Signature</div>
           <div style="display:flex;gap:8px;margin-bottom:6px;">
@@ -5743,7 +6298,6 @@ window.renderContractBuilder = function(ctId){
         </div>
 
         ` : `
-        <!-- Settings panel -->
         <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
           <div class="form-group"><label class="form-label">Contract Value ($)</label>
             <input class="form-control" type="number" value="${ct.value||0}" oninput="activeContract.value=+this.value;_refreshCtPreview()"></div>
@@ -5766,7 +6320,6 @@ window.renderContractBuilder = function(ctId){
         `)}
       </div>
 
-      <!-- Right: Preview -->
       <div class="builder-preview">
         <div class="preview-doc" id="ct-preview">
           ${_buildCtPreview(ct)}
@@ -5855,25 +6408,25 @@ function _buildSigPanel(){
       <input class="form-control" id="sig-typed" placeholder="Your full name" style="font-size:16px;" value="${db.user.name}">
       <div id="sig-preview" style="margin-top:10px;padding:16px;background:var(--bg);border-radius:var(--radius);min-height:50px;font-family:'Pacifico',cursive,serif;font-size:26px;color:var(--primary);text-align:center;">${db.user.name}</div>
     </div>
-    <script>document.getElementById('sig-typed').oninput=function(){document.getElementById('sig-preview').textContent=this.value;}<\/script>`;
+    <div id="sig-typed-placeholder"></div>`;
+setTimeout(function(){var el=document.getElementById('sig-typed');if(el)el.oninput=function(){var p=document.getElementById('sig-preview');if(p)p.textContent=this.value;};},100);
   if(mode==='draw') return `
     <div>
       <canvas id="sig-canvas" width="320" height="100" style="border:1px solid var(--border);border-radius:var(--radius);cursor:crosshair;width:100%;touch-action:none;background:#fff;"></canvas>
       <button onclick="document.getElementById('sig-canvas').getContext('2d').clearRect(0,0,320,100)" class="btn btn-sm btn-secondary mt-2">Clear</button>
-      <script>
-        (function(){
-          var c=document.getElementById('sig-canvas'),ctx=c.getContext('2d'),drawing=false;
-          ctx.strokeStyle='#5347CE';ctx.lineWidth=2;ctx.lineCap='round';
-          function pos(e){var r=c.getBoundingClientRect();var t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)*(320/r.width),y:(t.clientY-r.top)*(100/r.height)};}
-          c.addEventListener('mousedown',e=>{drawing=true;ctx.beginPath();var p=pos(e);ctx.moveTo(p.x,p.y);});
-          c.addEventListener('mousemove',e=>{if(!drawing)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();});
-          c.addEventListener('mouseup',()=>drawing=false);
-          c.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;ctx.beginPath();var p=pos(e);ctx.moveTo(p.x,p.y);});
-          c.addEventListener('touchmove',e=>{e.preventDefault();if(!drawing)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();});
-          c.addEventListener('touchend',()=>drawing=false);
-        })();
-      <\/script>
     </div>`;
+setTimeout(function(){
+  var c=document.getElementById('sig-canvas');if(!c)return;
+  var ctx=c.getContext('2d'),drawing=false;
+  ctx.strokeStyle='#5347CE';ctx.lineWidth=2;ctx.lineCap='round';
+  function pos(e){var r=c.getBoundingClientRect();var t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)*(320/r.width),y:(t.clientY-r.top)*(100/r.height)};}
+  c.addEventListener('mousedown',function(e){drawing=true;ctx.beginPath();var p=pos(e);ctx.moveTo(p.x,p.y);});
+  c.addEventListener('mousemove',function(e){if(!drawing)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();});
+  c.addEventListener('mouseup',function(){drawing=false;});
+  c.addEventListener('touchstart',function(e){e.preventDefault();drawing=true;ctx.beginPath();var p=pos(e);ctx.moveTo(p.x,p.y);});
+  c.addEventListener('touchmove',function(e){e.preventDefault();if(!drawing)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();});
+  c.addEventListener('touchend',function(){drawing=false;});
+},150);
   return `
     <div class="form-group">
       <label class="form-label">Upload signature image</label>
@@ -6003,7 +6556,6 @@ window.renderInvoiceBuilder = function(invId){
       <div class="builder-panel" style="overflow-y:auto;">
         <div style="padding:20px;display:flex;flex-direction:column;gap:16px;">
 
-          <!-- Invoice Type -->
           <div class="form-group">
             <label class="form-label">Invoice Type</label>
             <div style="display:flex;gap:6px;flex-wrap:wrap;" id="inv-type-btns">
@@ -6029,7 +6581,6 @@ window.renderInvoiceBuilder = function(invId){
             <div class="form-group"><label class="form-label">Due Date</label><input class="form-control" type="date" value="${inv.due||''}" oninput="activeInvoice.due=this.value;_refreshInvPreview()"></div>
           </div>
 
-          <!-- Recurring opts -->
           <div id="recurring-opts" style="display:${(inv.type||'one-time')==='recurring'?'block':'none'};padding:14px;background:var(--primary-light);border-radius:var(--radius);border:1px solid var(--primary);">
             <div style="font-size:12px;font-weight:600;color:var(--primary);margin-bottom:10px;">Recurring Schedule</div>
             <div class="form-row">
@@ -6042,7 +6593,6 @@ window.renderInvoiceBuilder = function(invId){
             </div>
           </div>
 
-          <!-- Deposit opts -->
           <div id="deposit-opts" style="display:${(inv.type||'one-time')==='deposit'?'block':'none'};padding:14px;background:var(--warning-bg);border-radius:var(--radius);border:1px solid var(--warning-text);">
             <div style="font-size:12px;font-weight:600;color:var(--warning-text);margin-bottom:10px;">Deposit Settings</div>
             <div class="form-row">
@@ -6051,7 +6601,6 @@ window.renderInvoiceBuilder = function(invId){
             </div>
           </div>
 
-          <!-- Line Items -->
           <div>
             <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">Line Items</div>
             <div style="overflow-x:auto;">
@@ -6077,7 +6626,6 @@ window.renderInvoiceBuilder = function(invId){
             <div class="form-group"><label class="form-label">Late Fee (%/month)</label><input class="form-control" type="number" value="${inv.lateFee||1.5}" step="0.1" oninput="activeInvoice.lateFee=+this.value"></div>
           </div>
 
-          <!-- Live totals -->
           <div style="background:var(--bg);border-radius:var(--radius);padding:14px;font-size:13px;display:flex;flex-direction:column;gap:8px;" id="inv-totals">
             ${_buildInvTotalsHtml()}
           </div>
@@ -6094,7 +6642,6 @@ window.renderInvoiceBuilder = function(invId){
         </div>
       </div>
 
-      <!-- Right: Preview -->
       <div class="builder-preview">
         <div class="preview-doc" id="inv-preview">
           ${_buildInvoicePreviewHtml(inv)}
