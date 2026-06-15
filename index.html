@@ -6542,7 +6542,7 @@ function _createInvoiceFromContract(ctId){
     issued: new Date().toISOString().split('T')[0],
     due: '', status:'draft', notes:'Thank you for your business!',
     type:'one-time', lateFee:1.5,
-    lineItems: ct.value ? [{desc: ct.title.replace(' — Service Agreement',''), qty:1, rate:ct.value, tax:9}] : [{desc:'',qty:1,rate:0,tax:9}],
+    lineItems: [{desc: ct.title.replace(' — Service Agreement','') || 'Services', qty:1, rate:ct.value||0, tax:9}],
     contractId: ct.id
   };
   db.invoices.push(inv);
@@ -6804,10 +6804,10 @@ window.renderInvoiceBuilder = function(invId){
                 <tbody id="inv-line-items">
                   ${invLineItems.map((li,i)=>`<tr>
                     <td><input value="${escHtml(li.desc)}" placeholder="Service description" oninput="invLineItems[${i}].desc=this.value;_refreshInvPreview()"></td>
-                    <td><input type="number" value="${li.qty}" style="width:50px;" oninput="invLineItems[${i}].qty=+this.value;_refreshInvPreview()"></td>
-                    <td><input type="number" value="${li.rate}" style="width:80px;" oninput="invLineItems[${i}].rate=+this.value;_refreshInvPreview()"></td>
+                    <td><input type="number" value="${li.qty}" style="width:50px;" oninput="invLineItems[${i}].qty=+this.value;document.getElementById('li-total-${i}').textContent='$'+(invLineItems[${i}].qty*invLineItems[${i}].rate).toLocaleString('en-US',{minimumFractionDigits:2});_refreshInvPreview()"></td>
+                    <td><input type="number" value="${li.rate}" style="width:80px;" oninput="invLineItems[${i}].rate=+this.value;document.getElementById('li-total-${i}').textContent='$'+(invLineItems[${i}].qty*invLineItems[${i}].rate).toLocaleString('en-US',{minimumFractionDigits:2});_refreshInvPreview()"></td>
                     <td><input type="number" value="${li.tax}" style="width:50px;" oninput="invLineItems[${i}].tax=+this.value;_refreshInvPreview()"></td>
-                    <td style="font-weight:600;white-space:nowrap;">$${(li.qty*li.rate).toLocaleString()}</td>
+                    <td id="li-total-${i}" style="font-weight:600;white-space:nowrap;color:var(--primary);">$${(li.qty*li.rate).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
                     <td><button onclick="invLineItems.splice(${i},1);renderInvoiceBuilder(activeInvoice.id)" style="background:none;border:none;cursor:pointer;color:var(--danger-text);"><i data-lucide="x" style="width:12px;height:12px;"></i></button></td>
                   </tr>`).join('')}
                 </tbody>
