@@ -5907,14 +5907,13 @@ window.renderProposalBuilder = function(propId){
         : '<i data-lucide="thumbs-up" style="width:13px;height:13px;"></i> Approve';
       approveBtn.onclick = ()=>{
         if(p.status==='accepted'){
-          openConfirm('Create Contract','This proposal is accepted. Create a contract from it?', ()=>_createContractFromProposal(p.id));
+          openConfirm('Create Contract','This proposal is accepted. Create a contract from it?', ()=>_createContractFromProposal(p.id), 'Create Contract');
         } else {
-          openConfirm('Approve Proposal','Mark this proposal as accepted? This will not auto-create a contract — you can do that separately.', ()=>{
+          openConfirm('Approve Proposal','Approve this proposal? A contract will be created automatically so you can send it for signing.', ()=>{
             p.status='accepted';
             _saveProposalNow(true);
-            renderProposalBuilder(p.id);
-            showToast('Proposal approved!','success');
-          });
+            _createContractFromProposal(p.id);
+          }, 'Approve & Create Contract');
         }
       };
       // Insert before Save Draft button
@@ -6043,8 +6042,8 @@ window.renderProposalBuilder = function(propId){
         <button class="btn btn-secondary btn-sm" onclick="_saveProposalNow(true)"><i data-lucide="save" style="width:13px;height:13px;"></i> Save Draft</button>
         <button class="btn btn-secondary btn-sm" onclick="_downloadProposalPDF(activeProposal.id)" style="gap:5px;"><i data-lucide="download" style="width:13px;height:13px;"></i> Download PDF</button>
         ${p.status==='accepted'
-          ? `<button class="btn btn-sm" style="background:#D1FAE5;color:#065F46;border:1px solid #A7F3D0;" onclick="openConfirm('Create Contract','Create a contract from this accepted proposal?',()=>_createContractFromProposal(activeProposal.id))"><i data-lucide="file-text" style="width:13px;height:13px;"></i> Create Contract</button>`
-          : `<button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;" onclick="openConfirm('Approve Proposal','Mark this proposal as accepted? You can create a contract from it separately.',()=>{activeProposal.status='accepted';_saveProposalNow(true);renderProposalBuilder(activeProposal.id);showToast('Proposal approved!','success');})"><i data-lucide="thumbs-up" style="width:13px;height:13px;"></i> Approve</button>`
+          ? `<button class="btn btn-sm" style="background:#D1FAE5;color:#065F46;border:1px solid #A7F3D0;" onclick="openConfirm('Create Contract','Create a contract from this accepted proposal?',()=>_createContractFromProposal(activeProposal.id),'Create Contract')"><i data-lucide="file-text" style="width:13px;height:13px;"></i> Create Contract</button>`
+          : `<button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;" onclick="openConfirm('Approve Proposal','Approve this proposal? A contract will be created automatically so you can send it for signing.',()=>{activeProposal.status='accepted';_saveProposalNow(true);_createContractFromProposal(activeProposal.id);},'Approve & Create Contract')"><i data-lucide="thumbs-up" style="width:13px;height:13px;"></i> Approve</button>`
         }
         <button class="btn btn-primary btn-sm" onclick="_saveProposalNow(true);sendProposal(activeProposal.id)"><i data-lucide="send" style="width:13px;height:13px;"></i> Send</button>
       </div>
@@ -6519,7 +6518,41 @@ function _applySignature(){
   _saveContractNow();
   showToast('Contract signed!','success');
   renderContractBuilder(activeContract.id);
+  // Offer to create invoice
+  setTimeout(()=>{
+    openConfirm(
+      'Create Invoice?',
+      'Contract is signed. Would you like to create an invoice for this project now?',
+      ()=>{ _createInvoiceFromContract(activeContract.id); },
+      'Create Invoice'
+    );
+  }, 600);
 }
+
+function _createInvoiceFromContract(ctId){
+  const ct = db.contracts.find(x=>x.id===ctId)||activeContract;
+  if(!ct){ showToast('Contract not found','error'); return; }
+  const num = 'INV-'+String(db.invoices.length+1).padStart(4,'0');
+  const inv = {
+    id: 'inv_'+Date.now(),
+    num, clientId: ct.clientId,
+    project: ct.title.replace(' — Service Agreement',''),
+    amount: ct.value||0, tax:0, discount:0,
+    total: ct.value||0,
+    issued: new Date().toISOString().split('T')[0],
+    due: '', status:'draft', notes:'Thank you for your business!',
+    type:'one-time', lateFee:1.5,
+    lineItems: ct.value ? [{desc: ct.title.replace(' — Service Agreement',''), qty:1, rate:ct.value, tax:9}] : [{desc:'',qty:1,rate:0,tax:9}],
+    contractId: ct.id
+  };
+  db.invoices.push(inv);
+  activeInvoice = inv;
+  invLineItems = [...inv.lineItems];
+  saveToStorage();
+  showToast('Invoice created from contract!','success');
+  navigateTo('invoice-builder', {invoiceId: inv.id});
+}
+window._createInvoiceFromContract = _createInvoiceFromContract;
 
 function _saveContractNow(){
   if(!activeContract) return;
