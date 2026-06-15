@@ -5644,27 +5644,20 @@ window._downloadProposalPDF = function(propId){
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
     <title>${p.title}</title>
     <style>
-      @page {
-        size: A4;
-        margin: 18mm 16mm 20mm 16mm;
-      }
-      @page :first {
-        margin-top: 0;
-      }
+      @page { size:A4; margin:20mm 18mm 22mm 18mm; }
       *{box-sizing:border-box;margin:0;padding:0;}
-      html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;font-size:13px;line-height:1.6;}
-      /* Cover — full bleed first page, no top margin */
+      html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;font-size:13px;line-height:1.65;background:#fff;}
       .cover{
-        background:linear-gradient(135deg,${coverColor},${coverColor}bb);
-        padding:64px 48px 56px;
+        background:linear-gradient(135deg,${coverColor} 0%,${coverColor}cc 100%);
+        padding:40px 40px 32px;
         color:#fff;
-        margin:-18mm -16mm 0;  /* bleed into the @page margins */
-        page-break-after:always;
+        border-radius:6px;
+        margin-bottom:32px;
       }
-      .cover-label{font-size:10px;font-weight:700;letter-spacing:.15em;opacity:.65;margin-bottom:14px;text-transform:uppercase;}
-      .cover-title{font-size:32px;font-weight:800;line-height:1.2;margin-bottom:12px;}
-      .cover-tagline{font-size:15px;opacity:.85;margin-bottom:20px;}
-      .cover-meta{font-size:12px;opacity:.7;margin-top:32px;padding-top:20px;border-top:1px solid rgba(255,255,255,.3);}
+      .cover-label{font-size:9.5px;font-weight:700;letter-spacing:.18em;opacity:.6;margin-bottom:12px;text-transform:uppercase;}
+      .cover-title{font-size:26px;font-weight:800;line-height:1.25;margin-bottom:10px;}
+      .cover-tagline{font-size:14px;opacity:.85;margin-bottom:16px;}
+      .cover-meta{font-size:12px;opacity:.8;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.25);}
       .cover-meta p{margin-bottom:4px;}
 
       /* Body sections */
@@ -6544,70 +6537,86 @@ window._downloadContractPDF = function(ctId){
   const cc = ct.clauseContent||{};
   const accentColor = '#5347CE';
 
+  // Build clause rows first so escHtml runs in this window's scope
+  const clauseRows = ct.clauses.map(c=>{
+    const content = cc[c] || (typeof STD_CLAUSES!=='undefined' ? STD_CLAUSES[c] : '') || '';
+    return `<div class="clause">
+      <div class="clause-title">${escHtml(c)}</div>
+      <div class="clause-content">${escHtml(content)}</div>
+    </div>`;
+  }).join('');
+
+  const sigBlock = `<div class="sig-block">
+    <div class="sig-label">Signatures</div>
+    <div class="sig-grid">
+      <div>
+        <div class="sig-line">${ct.signed?`<span class="sig-cursive">${escHtml(ct.sigName||db.user.name)}</span>`:''}</div>
+        <div class="sig-caption">Service Provider — ${escHtml(db.user.name)}</div>
+        ${ct.signedAt?`<div class="sig-date">Signed: ${ct.signedAt}</div>`:''}
+      </div>
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-caption">Client — ${escHtml(cl&&cl.name?cl.name:'—')}</div>
+      </div>
+    </div>
+  </div>`;
+
+  const coverMeta = [
+    cl&&cl.name ? `<div class="meta-item"><div class="meta-label">Client</div><div class="meta-val">${escHtml(cl.name)}${cl.company?`<br><span style="opacity:.75;font-size:12px;">${escHtml(cl.company)}</span>`:''}</div></div>` : '',
+    `<div class="meta-item"><div class="meta-label">Provider</div><div class="meta-val">${escHtml(db.user.name)}</div></div>`,
+    `<div class="meta-item"><div class="meta-label">Date</div><div class="meta-val">${ct.created||new Date().toISOString().split('T')[0]}</div></div>`,
+    ct.value ? `<div class="meta-item"><div class="meta-label">Value</div><div class="meta-val" style="color:#fff;">$${Number(ct.value).toLocaleString()}</div></div>` : '',
+    `<div class="meta-item"><div class="meta-label">Status</div><div class="meta-val" style="text-transform:capitalize;">${ct.status||'draft'}</div></div>`,
+  ].join('');
+
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
     <title>${escHtml(ct.title)}</title>
     <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
     <style>
-      @page { size:A4; margin:18mm 16mm 20mm 16mm; }
-      @page :first { margin-top:0; }
+      @page { size:A4; margin:20mm 18mm 22mm 18mm; }
       *{box-sizing:border-box;margin:0;padding:0;}
-      html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;font-size:13px;line-height:1.6;}
-      .cover{background:linear-gradient(135deg,${accentColor},${accentColor}bb);padding:56px 48px 48px;color:#fff;margin:-18mm -16mm 0;page-break-after:always;}
-      .cover-label{font-size:10px;font-weight:700;letter-spacing:.15em;opacity:.65;text-transform:uppercase;margin-bottom:14px;}
-      .cover-title{font-size:30px;font-weight:800;line-height:1.2;margin-bottom:8px;}
-      .cover-meta{display:flex;gap:32px;margin-top:32px;padding-top:20px;border-top:1px solid rgba(255,255,255,.3);flex-wrap:wrap;}
-      .cover-meta-item label{font-size:10px;opacity:.6;text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:3px;}
-      .cover-meta-item span{font-size:13px;font-weight:600;}
-      .body{padding:0;}
-      .clause{margin-bottom:28px;page-break-inside:avoid;}
-      .clause-title{font-size:10px;font-weight:800;color:${accentColor};text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid ${accentColor}22;}
+      html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;font-size:13px;line-height:1.65;background:#fff;}
+      /* Cover header — no bleed, just a nice header block */
+      .cover{
+        background:linear-gradient(135deg,${accentColor} 0%,${accentColor}cc 100%);
+        color:#fff;
+        padding:40px 40px 32px;
+        border-radius:6px;
+        margin-bottom:32px;
+      }
+      .cover-label{font-size:9.5px;font-weight:700;letter-spacing:.18em;opacity:.6;text-transform:uppercase;margin-bottom:12px;}
+      .cover-title{font-size:26px;font-weight:800;line-height:1.25;margin-bottom:20px;}
+      .cover-divider{border:none;border-top:1px solid rgba(255,255,255,.25);margin-bottom:18px;}
+      .meta-row{display:flex;gap:28px;flex-wrap:wrap;}
+      .meta-item{min-width:80px;}
+      .meta-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;opacity:.55;margin-bottom:3px;}
+      .meta-val{font-size:13px;font-weight:600;}
+      /* Clauses */
+      .clause{margin-bottom:24px;page-break-inside:avoid;}
+      .clause-title{font-size:9.5px;font-weight:800;color:${accentColor};text-transform:uppercase;letter-spacing:.12em;margin-bottom:7px;padding-bottom:5px;border-bottom:1.5px solid ${accentColor}33;}
       .clause-content{font-size:13px;color:#374151;line-height:1.8;white-space:pre-line;}
-      .sig-block{margin-top:40px;padding-top:24px;border-top:2px solid #E5E7EB;page-break-inside:avoid;}
-      .sig-label{font-size:10px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:20px;}
-      .sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;}
-      .sig-line{border-bottom:2px solid #374151;height:48px;display:flex;align-items:flex-end;padding-bottom:4px;margin-bottom:6px;}
-      .sig-name-cursive{font-family:'Pacifico',cursive,serif;font-size:26px;color:${accentColor};}
+      /* Signature */
+      .sig-block{margin-top:36px;padding-top:20px;border-top:2px solid #E5E7EB;page-break-inside:avoid;}
+      .sig-label{font-size:9.5px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:18px;}
+      .sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:36px;}
+      .sig-line{border-bottom:2px solid #374151;height:50px;display:flex;align-items:flex-end;padding-bottom:3px;margin-bottom:6px;}
+      .sig-cursive{font-family:'Pacifico',cursive,serif;font-size:24px;color:${accentColor};}
       .sig-caption{font-size:11px;color:#6B7280;}
       .sig-date{font-size:10px;color:#9CA3AF;margin-top:3px;}
-      .footer{position:fixed;bottom:0;left:0;right:0;padding:7px 16mm;display:flex;justify-content:space-between;border-top:1px solid #E5E7EB;font-size:10px;color:#9CA3AF;background:#fff;}
-      @media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.clause{page-break-inside:avoid;}}
+      @media print{
+        html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+        .clause{page-break-inside:avoid;}
+        .sig-block{page-break-inside:avoid;}
+      }
     </style></head><body>
     <div class="cover">
       <div class="cover-label">Service Agreement</div>
       <div class="cover-title">${escHtml(ct.title)}</div>
-      <div class="cover-meta">
-        ${cl&&cl.name?`<div class="cover-meta-item"><label>Client</label><span>${escHtml(cl.name)}${cl.company?'<br><small style="opacity:.8">'+escHtml(cl.company)+'</small>':''}</span></div>`:''}
-        <div class="cover-meta-item"><label>Provider</label><span>${escHtml(db.user.name)}</span></div>
-        <div class="cover-meta-item"><label>Date</label><span>${ct.created||new Date().toISOString().split('T')[0]}</span></div>
-        ${ct.value?`<div class="cover-meta-item"><label>Value</label><span>$${Number(ct.value).toLocaleString()}</span></div>`:''}
-        <div class="cover-meta-item"><label>Status</label><span style="text-transform:capitalize;">${ct.status||'draft'}</span></div>
-      </div>
+      <hr class="cover-divider">
+      <div class="meta-row">${coverMeta}</div>
     </div>
-    <div class="body">
-      ${ct.clauses.map(c=>`
-        <div class="clause">
-          <div class="clause-title">${escHtml(c)}</div>
-          <div class="clause-content">${escHtml(cc[c]||(typeof STD_CLAUSES!=='undefined'?STD_CLAUSES[c]:'')|| '')}</div>
-        </div>`).join('')}
-      <div class="sig-block">
-        <div class="sig-label">Signatures</div>
-        <div class="sig-grid">
-          <div>
-            <div class="sig-line">${ct.signed?`<span class="sig-name-cursive">${escHtml(ct.sigName||db.user.name)}</span>`:''}</div>
-            <div class="sig-caption">Service Provider — ${escHtml(db.user.name)}</div>
-            ${ct.signedAt?`<div class="sig-date">Signed: ${ct.signedAt}</div>`:''}
-          </div>
-          <div>
-            <div class="sig-line"></div>
-            <div class="sig-caption">Client — ${escHtml(cl&&cl.name?cl.name:'—')}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="footer">
-      <span>${escHtml(db.user.company||db.user.name||'DealSuite')}</span>
-      <span>${escHtml(ct.title)}</span>
-    </div>
+    ${clauseRows}
+    ${sigBlock}
     <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>
   </body></html>`;
 
