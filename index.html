@@ -6317,7 +6317,7 @@ window.renderContractBuilder = function(ctId){
           ${db.clients.map(c=>`<option value="${c.id}" ${ct.clientId===c.id?'selected':''}>${escHtml(c.name)}</option>`).join('')}
         </select>
         <button class="btn btn-secondary btn-sm" onclick="_saveContractNow()"><i data-lucide="save" style="width:13px;height:13px;"></i> Save</button>
-        <button class="btn btn-secondary btn-sm" onclick="showToast('PDF export in production build','info')"><i data-lucide="download" style="width:13px;height:13px;"></i> PDF</button>
+        <button class="btn btn-secondary btn-sm" onclick="_downloadContractPDF(activeContract.id)"><i data-lucide="download" style="width:13px;height:13px;"></i> Download PDF</button>
         <button class="btn btn-primary btn-sm" onclick="_saveContractNow();sendContract(activeContract.id)"><i data-lucide="send" style="width:13px;height:13px;"></i> Send for Signing</button>
       </div>
     </div>
@@ -6462,7 +6462,7 @@ function _buildCtPreview(ct){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
           <div>
             <div style="border-bottom:2px solid var(--border);margin-bottom:6px;height:40px;display:flex;align-items:flex-end;padding-bottom:4px;">
-              ${ct.signed?`<span style="font-family:'Pacifico',cursive,serif;font-size:22px;color:var(--primary);">${escHtml(db.user.name)}</span>`:''}
+              ${ct.signed?`<span style="font-family:'Pacifico',cursive,serif;font-size:22px;color:var(--primary);">${escHtml(ct.sigName||db.user.name)}</span>`:''}
             </div>
             <div style="font-size:11px;color:var(--text-muted);">Service Provider — ${escHtml(db.user.name)}</div>
             ${ct.signedAt?`<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${ct.signedAt}</div>`:''}
@@ -6536,6 +6536,85 @@ function _saveContractNow(){
   saveToStorage();
   showToast('Contract saved!','success');
 }
+
+window._downloadContractPDF = function(ctId){
+  const ct = db.contracts.find(x=>x.id===ctId)||activeContract;
+  if(!ct){ showToast('Contract not found','error'); return; }
+  const cl = getClient(ct.clientId);
+  const cc = ct.clauseContent||{};
+  const accentColor = '#5347CE';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>${escHtml(ct.title)}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+    <style>
+      @page { size:A4; margin:18mm 16mm 20mm 16mm; }
+      @page :first { margin-top:0; }
+      *{box-sizing:border-box;margin:0;padding:0;}
+      html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;font-size:13px;line-height:1.6;}
+      .cover{background:linear-gradient(135deg,${accentColor},${accentColor}bb);padding:56px 48px 48px;color:#fff;margin:-18mm -16mm 0;page-break-after:always;}
+      .cover-label{font-size:10px;font-weight:700;letter-spacing:.15em;opacity:.65;text-transform:uppercase;margin-bottom:14px;}
+      .cover-title{font-size:30px;font-weight:800;line-height:1.2;margin-bottom:8px;}
+      .cover-meta{display:flex;gap:32px;margin-top:32px;padding-top:20px;border-top:1px solid rgba(255,255,255,.3);flex-wrap:wrap;}
+      .cover-meta-item label{font-size:10px;opacity:.6;text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:3px;}
+      .cover-meta-item span{font-size:13px;font-weight:600;}
+      .body{padding:0;}
+      .clause{margin-bottom:28px;page-break-inside:avoid;}
+      .clause-title{font-size:10px;font-weight:800;color:${accentColor};text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid ${accentColor}22;}
+      .clause-content{font-size:13px;color:#374151;line-height:1.8;white-space:pre-line;}
+      .sig-block{margin-top:40px;padding-top:24px;border-top:2px solid #E5E7EB;page-break-inside:avoid;}
+      .sig-label{font-size:10px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:20px;}
+      .sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;}
+      .sig-line{border-bottom:2px solid #374151;height:48px;display:flex;align-items:flex-end;padding-bottom:4px;margin-bottom:6px;}
+      .sig-name-cursive{font-family:'Pacifico',cursive,serif;font-size:26px;color:${accentColor};}
+      .sig-caption{font-size:11px;color:#6B7280;}
+      .sig-date{font-size:10px;color:#9CA3AF;margin-top:3px;}
+      .footer{position:fixed;bottom:0;left:0;right:0;padding:7px 16mm;display:flex;justify-content:space-between;border-top:1px solid #E5E7EB;font-size:10px;color:#9CA3AF;background:#fff;}
+      @media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.clause{page-break-inside:avoid;}}
+    </style></head><body>
+    <div class="cover">
+      <div class="cover-label">Service Agreement</div>
+      <div class="cover-title">${escHtml(ct.title)}</div>
+      <div class="cover-meta">
+        ${cl&&cl.name?`<div class="cover-meta-item"><label>Client</label><span>${escHtml(cl.name)}${cl.company?'<br><small style="opacity:.8">'+escHtml(cl.company)+'</small>':''}</span></div>`:''}
+        <div class="cover-meta-item"><label>Provider</label><span>${escHtml(db.user.name)}</span></div>
+        <div class="cover-meta-item"><label>Date</label><span>${ct.created||new Date().toISOString().split('T')[0]}</span></div>
+        ${ct.value?`<div class="cover-meta-item"><label>Value</label><span>$${Number(ct.value).toLocaleString()}</span></div>`:''}
+        <div class="cover-meta-item"><label>Status</label><span style="text-transform:capitalize;">${ct.status||'draft'}</span></div>
+      </div>
+    </div>
+    <div class="body">
+      ${ct.clauses.map(c=>`
+        <div class="clause">
+          <div class="clause-title">${escHtml(c)}</div>
+          <div class="clause-content">${escHtml(cc[c]||(typeof STD_CLAUSES!=='undefined'?STD_CLAUSES[c]:'')|| '')}</div>
+        </div>`).join('')}
+      <div class="sig-block">
+        <div class="sig-label">Signatures</div>
+        <div class="sig-grid">
+          <div>
+            <div class="sig-line">${ct.signed?`<span class="sig-name-cursive">${escHtml(ct.sigName||db.user.name)}</span>`:''}</div>
+            <div class="sig-caption">Service Provider — ${escHtml(db.user.name)}</div>
+            ${ct.signedAt?`<div class="sig-date">Signed: ${ct.signedAt}</div>`:''}
+          </div>
+          <div>
+            <div class="sig-line"></div>
+            <div class="sig-caption">Client — ${escHtml(cl&&cl.name?cl.name:'—')}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>${escHtml(db.user.company||db.user.name||'DealSuite')}</span>
+      <span>${escHtml(ct.title)}</span>
+    </div>
+    <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>
+  </body></html>`;
+
+  const win = window.open('','_blank','width=900,height=700');
+  if(win){ win.document.write(html); win.document.close(); }
+  else showToast('Allow popups to download PDF','error');
+};
 
 function _addCtClause(){
   if(!activeContract) return;
