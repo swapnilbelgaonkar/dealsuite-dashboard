@@ -5365,6 +5365,994 @@ window.recordPayment = function(invId){
 };
 
 </script>
+
+<!-- ================================================================
+     COMPREHENSIVE BUILDER FIX — live preview, real save, full CRUD
+================================================================ -->
+<script>
+// ─────────────────────────────────────────────────────────────────
+// PROPOSAL BUILDER — fully functional
+// ─────────────────────────────────────────────────────────────────
+window.renderProposalBuilder = function(propId){
+  if(propId && propId !== 'new'){
+    activeProposal = db.proposals.find(p=>p.id===propId) || null;
+  }
+  if(!activeProposal || propId === 'new'){
+    activeProposal = {
+      id: 'prop_' + Date.now(),
+      title: 'Untitled Proposal',
+      clientId: '',
+      status: 'draft',
+      amount: 0,
+      currency: 'USD',
+      sections: ['Cover Page','Introduction','Scope of Work','Deliverables','Timeline','Fee Summary','Terms & Conditions'],
+      sectionContent: {},
+      created: new Date().toISOString().split('T')[0],
+      expires: ''
+    };
+    // Auto-add to db so it persists
+    db.proposals.push(activeProposal);
+  }
+  if(!activeProposal.sectionContent) activeProposal.sectionContent = {};
+  // Pre-fill defaults
+  activeProposal.sections.forEach(s=>{ if(!activeProposal.sectionContent[s]) activeProposal.sectionContent[s] = _propSectionDefault(s); });
+  if(activePropSection >= activeProposal.sections.length) activePropSection = 0;
+
+  const p = activeProposal;
+  const cl = getClient(p.clientId);
+
+  document.getElementById('page-proposal-builder').innerHTML = `
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div class="flex items-center gap-3">
+        <button class="btn btn-ghost btn-sm" onclick="navigateTo('proposals')"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i></button>
+        <input id="prop-title-input" class="form-control" style="width:260px;font-weight:600;" value="${escHtml(p.title)}" oninput="activeProposal.title=this.value;_refreshPropPreview()">
+        <span class="badge ${statusClass(p.status)}">${p.status}</span>
+        <span style="font-size:11px;color:var(--text-muted);">● Auto-saved</span>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <select class="form-control" style="width:170px;" onchange="activeProposal.clientId=this.value;_refreshPropPreview()">
+          <option value="">Select client…</option>
+          ${db.clients.map(c=>`<option value="${c.id}" ${p.clientId===c.id?'selected':''}>${escHtml(c.name)}</option>`).join('')}
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="_saveProposalNow()"><i data-lucide="save" style="width:13px;height:13px;"></i> Save Draft</button>
+        <button class="btn btn-secondary btn-sm" onclick="showToast('Client portal preview: use Preview in the portal','info')"><i data-lucide="eye" style="width:13px;height:13px;"></i> Preview</button>
+        <button class="btn btn-primary btn-sm" onclick="_saveProposalNow();sendProposal(activeProposal.id)"><i data-lucide="send" style="width:13px;height:13px;"></i> Send</button>
+      </div>
+    </div>
+
+    <div class="builder-wrap">
+      <!-- Left: Section list + editor -->
+      <div class="builder-panel" style="overflow-y:auto;">
+        <div style="padding:14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;">Sections</span>
+          <button class="btn btn-sm btn-secondary" onclick="_addPropSection()"><i data-lucide="plus" style="width:12px;height:12px;"></i> Add</button>
+        </div>
+        <div id="prop-section-list">
+          ${p.sections.map((s,i)=>`
+            <div class="section-item ${i===activePropSection?'active':''}" onclick="activePropSection=${i};_renderPropSectionEditor()" style="cursor:pointer;">
+              <i data-lucide="grip-vertical" class="drag-handle" style="width:13px;height:13px;"></i>
+              <span style="flex:1;">${escHtml(s)}</span>
+              <button class="btn btn-icon btn-ghost" style="padding:2px;" onclick="event.stopPropagation();_removePropSection(${i})"><i data-lucide="x" style="width:11px;height:11px;"></i></button>
+            </div>`).join('')}
+        </div>
+        <div id="prop-section-editor" style="padding:16px;border-top:1px solid var(--border);">
+          ${_buildPropSectionEditor(p.sections[activePropSection], p)}
+        </div>
+      </div>
+
+      <!-- Right: Live Preview -->
+      <div class="builder-preview">
+        <div class="preview-doc" id="prop-preview">
+          ${_buildPropPreview(p)}
+        </div>
+      </div>
+    </div>
+  `;
+  lucide.createIcons();
+};
+
+function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function _propSectionDefault(s){
+  const d = {
+    'Cover Page': '',
+    'Introduction': 'Thank you for the opportunity to present this proposal. We are excited to partner with you on this project.',
+    'Scope of Work': '• Website design and development\n• Brand identity refinement\n• Content strategy\n• SEO optimization',
+    'Deliverables': '• Final design files (Figma)\n• Responsive website (3 pages)\n• Style guide\n• 30-day post-launch support',
+    'Timeline': 'Week 1–2: Discovery & strategy\nWeek 3–4: Design concepts\nWeek 5–6: Development\nWeek 7: Testing & launch',
+    'Terms & Conditions': '50% deposit required to begin work. Remaining balance due upon project completion. All work remains property of client upon final payment.',
+  };
+  return d[s] || '';
+}
+
+function _buildPropSectionEditor(section, p){
+  if(!section) return '<div style="color:var(--text-muted);font-size:13px;">Select a section to edit</div>';
+  if(!p.sectionContent) p.sectionContent = {};
+  const val = escHtml(p.sectionContent[section] || '');
+
+  if(section === 'Cover Page') return `
+    <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">Cover Page</div>
+    <div class="form-group mb-3"><label class="form-label">Proposal Title</label>
+      <input class="form-control" value="${escHtml(p.title)}" oninput="activeProposal.title=this.value;document.getElementById('prop-title-input').value=this.value;_refreshPropPreview()"></div>
+    <div class="form-group mb-3"><label class="form-label">Tagline</label>
+      <input class="form-control" id="prop-tagline" value="${escHtml(p.tagline||'')}" placeholder="e.g. Transforming your digital presence" oninput="activeProposal.tagline=this.value;_refreshPropPreview()"></div>
+    <div class="form-group mb-3"><label class="form-label">Valid Until</label>
+      <input class="form-control" type="date" value="${p.expires||''}" oninput="activeProposal.expires=this.value;_refreshPropPreview()"></div>
+    <div class="form-group"><label class="form-label">Cover Color</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+        ${[['#5347CE','Purple'],['#0F9E9D','Teal'],['#2563EB','Blue'],['#DC2626','Red'],['#111827','Dark']].map(([c,n])=>`
+          <button onclick="activeProposal.coverColor='${c}';_refreshPropPreview()" style="width:28px;height:28px;border-radius:50%;background:${c};border:3px solid ${(p.coverColor||'#5347CE')===c?'#fff':'transparent'};outline:2px solid ${(p.coverColor||'#5347CE')===c?c:'transparent'};cursor:pointer;" title="${n}"></button>
+        `).join('')}
+      </div>
+    </div>`;
+
+  if(section === 'Fee Summary') return _buildFeeSummaryEditor();
+
+  return `
+    <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">${escHtml(section)}</div>
+    <div class="form-group">
+      <label class="form-label">Content</label>
+      <textarea class="form-control" rows="10" placeholder="Write ${escHtml(section)} content here…"
+        oninput="activeProposal.sectionContent['${section}']=this.value;_refreshPropPreview()"
+      >${val}</textarea>
+    </div>`;
+}
+
+function _buildFeeSummaryEditor(){
+  const sub = lineItems.reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax = lineItems.reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  const total = sub+tax;
+  return `
+    <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">Fee Summary</div>
+    <div class="flex gap-1 mb-3" style="background:var(--bg);border-radius:var(--radius-sm);padding:3px;">
+      ${['single','packages','multi-select'].map(m=>`
+        <button onclick="feeMode='${m}';_renderPropSectionEditor()"
+          style="flex:1;padding:5px 8px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;
+          background:${feeMode===m?'var(--surface)':'transparent'};
+          color:${feeMode===m?'var(--primary)':'var(--text-secondary)'};
+          box-shadow:${feeMode===m?'var(--shadow-sm)':'none'};transition:all .15s;">
+          ${m.charAt(0).toUpperCase()+m.slice(1)}
+        </button>`).join('')}
+    </div>
+    ${feeMode==='packages' ? buildPackageEditor() : `
+    <div style="overflow-x:auto;">
+    <table class="line-items-table" style="margin-bottom:8px;">
+      <thead><tr><th style="width:40%;">Description</th><th>Qty</th><th>Rate</th><th>Tax%</th><th>Total</th><th></th></tr></thead>
+      <tbody>
+        ${lineItems.map((li,i)=>`<tr>
+          <td><input value="${escHtml(li.desc)}" oninput="lineItems[${i}].desc=this.value;_refreshPropPreview()"></td>
+          <td><input type="number" value="${li.qty}" style="width:50px;" oninput="lineItems[${i}].qty=+this.value;_refreshPropPreview()"></td>
+          <td><input type="number" value="${li.rate}" style="width:80px;" oninput="lineItems[${i}].rate=+this.value;_refreshPropPreview()"></td>
+          <td><input type="number" value="${li.tax}" style="width:50px;" oninput="lineItems[${i}].tax=+this.value;_refreshPropPreview()"></td>
+          <td style="font-weight:600;white-space:nowrap;">$${(li.qty*li.rate).toLocaleString()}</td>
+          <td><button onclick="lineItems.splice(${i},1);_renderPropSectionEditor();_refreshPropPreview()" style="background:none;border:none;cursor:pointer;color:var(--danger-text);"><i data-lucide="x" style="width:12px;height:12px;"></i></button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    <button class="btn btn-sm btn-secondary mb-3" style="width:100%;" onclick="lineItems.push({desc:'',qty:1,rate:0,tax:9});_renderPropSectionEditor();_refreshPropPreview()">+ Add Line Item</button>
+    <div style="background:var(--bg);border-radius:var(--radius-sm);padding:12px;font-size:12px;display:flex;flex-direction:column;gap:6px;">
+      <div class="flex justify-between"><span style="color:var(--text-secondary);">Subtotal</span><span>$${sub.toLocaleString()}</span></div>
+      <div class="flex justify-between"><span style="color:var(--text-secondary);">Tax</span><span>$${tax.toFixed(2)}</span></div>
+      <div class="flex justify-between fw-700" style="border-top:1px solid var(--border);padding-top:6px;font-size:14px;color:var(--primary);"><span>Total</span><span>$${total.toFixed(2)}</span></div>
+    </div>`}`;
+}
+
+function _renderPropSectionEditor(){
+  const p = activeProposal;
+  if(!p) return;
+  const el = document.getElementById('prop-section-editor');
+  if(el) el.innerHTML = _buildPropSectionEditor(p.sections[activePropSection], p);
+  // Update section list active state
+  document.querySelectorAll('#prop-section-list .section-item').forEach((el,i)=>{
+    el.classList.toggle('active', i===activePropSection);
+  });
+  lucide.createIcons();
+}
+
+function _refreshPropPreview(){
+  const el = document.getElementById('prop-preview');
+  if(el && activeProposal) el.innerHTML = _buildPropPreview(activeProposal);
+  saveToStorage();
+}
+
+function _buildPropPreview(p){
+  if(!p) return '';
+  const cl = getClient(p.clientId);
+  const sub = lineItems.reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax = lineItems.reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  const total = sub+tax;
+  const coverColor = p.coverColor || '#5347CE';
+  const sc = p.sectionContent || {};
+
+  return `
+    <div style="background:linear-gradient(135deg,${coverColor} 0%,${coverColor}cc 100%);padding:48px 40px;color:#fff;border-radius:var(--radius) var(--radius) 0 0;">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.12em;opacity:.7;margin-bottom:10px;">PROPOSAL</div>
+      <div style="font-size:26px;font-weight:800;margin-bottom:10px;line-height:1.2;">${escHtml(p.title||'Untitled Proposal')}</div>
+      ${p.tagline?`<div style="font-size:14px;opacity:.85;margin-bottom:10px;">${escHtml(p.tagline)}</div>`:''}
+      ${cl.name?`<div style="opacity:.8;font-size:13px;margin-top:10px;">Prepared for <strong>${escHtml(cl.name)}</strong>${cl.company?` · ${escHtml(cl.company)}`:''}</div>`:''}
+      ${p.expires?`<div style="margin-top:12px;font-size:11px;opacity:.7;background:rgba(255,255,255,.15);display:inline-block;padding:4px 12px;border-radius:99px;">Valid until ${fmtDate(p.expires)}</div>`:''}
+    </div>
+    <div style="padding:32px 40px;">
+      ${p.sections.filter(s=>s!=='Cover Page').map(s=>`
+        <div style="margin-bottom:28px;">
+          <div style="font-size:10px;font-weight:700;color:${coverColor};text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">${escHtml(s)}</div>
+          ${s==='Fee Summary' ? `
+            <table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:14px;">
+              <thead><tr style="background:var(--bg);">${['Description','Qty','Rate','Tax','Total'].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border);">${h}</th>`).join('')}</tr></thead>
+              <tbody>${lineItems.map(li=>`<tr style="border-bottom:1px solid var(--border-light);">
+                <td style="padding:8px 10px;">${escHtml(li.desc)}</td>
+                <td style="padding:8px 10px;">${li.qty}</td>
+                <td style="padding:8px 10px;">$${li.rate.toLocaleString()}</td>
+                <td style="padding:8px 10px;">${li.tax}%</td>
+                <td style="padding:8px 10px;font-weight:600;">$${(li.qty*li.rate).toLocaleString()}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+            <div style="padding:14px;background:var(--bg);border-radius:var(--radius);font-size:13px;">
+              <div class="flex justify-between" style="margin-bottom:6px;"><span style="color:var(--text-secondary);">Subtotal</span><span>$${sub.toLocaleString()}</span></div>
+              <div class="flex justify-between" style="margin-bottom:6px;"><span style="color:var(--text-secondary);">Tax</span><span>$${tax.toFixed(2)}</span></div>
+              <div class="flex justify-between" style="border-top:1px solid var(--border);padding-top:8px;font-size:15px;font-weight:700;color:${coverColor};"><span>Total</span><span>$${total.toFixed(2)}</span></div>
+            </div>` :
+          `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;white-space:pre-line;">${escHtml(sc[s]||_propSectionDefault(s)||'Content goes here…')}</div>`}
+        </div>`).join('')}
+      <div style="margin-top:32px;padding-top:20px;border-top:2px solid var(--border);display:flex;gap:12px;">
+        <button class="btn btn-primary" style="flex:1;background:${coverColor};border-color:${coverColor};" onclick="showToast('Proposal accepted! Contract will be generated.','success')">Accept Proposal</button>
+        <button class="btn btn-secondary" onclick="showToast('Proposal declined','error')">Decline</button>
+      </div>
+    </div>`;
+}
+
+function _saveProposalNow(){
+  if(!activeProposal) return;
+  const p = activeProposal;
+  const sub = lineItems.reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax = lineItems.reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  p.amount = sub+tax;
+  p.lineItems = [...lineItems];
+  // Upsert into db.proposals
+  const idx = db.proposals.findIndex(x=>x.id===p.id);
+  if(idx>=0) db.proposals[idx] = p;
+  else db.proposals.push(p);
+  saveToStorage();
+  showToast('Proposal saved!','success');
+}
+
+window._addPropSection = function(){
+  if(!activeProposal) return;
+  const s = prompt('Section name:','Custom Section');
+  if(s && s.trim()){
+    activeProposal.sections.push(s.trim());
+    activeProposal.sectionContent[s.trim()] = '';
+    activePropSection = activeProposal.sections.length-1;
+    window.renderProposalBuilder(activeProposal.id);
+  }
+};
+window._removePropSection = function(i){
+  if(!activeProposal) return;
+  activeProposal.sections.splice(i,1);
+  if(activePropSection>=activeProposal.sections.length) activePropSection=Math.max(0,activeProposal.sections.length-1);
+  window.renderProposalBuilder(activeProposal.id);
+};
+window._renderPropSectionEditor = _renderPropSectionEditor;
+window._refreshPropPreview = _refreshPropPreview;
+window._buildPropSectionEditor = _buildPropSectionEditor;
+
+// ─────────────────────────────────────────────────────────────────
+// CONTRACT BUILDER — fully functional
+// ─────────────────────────────────────────────────────────────────
+window.renderContractBuilder = function(ctId){
+  if(ctId && ctId!=='new'){
+    activeContract = db.contracts.find(c=>c.id===ctId)||null;
+  }
+  if(!activeContract || ctId==='new'){
+    activeContract = {
+      id: 'ct_'+Date.now(),
+      title: 'New Service Agreement',
+      clientId: '',
+      status: 'draft',
+      value: 0,
+      created: new Date().toISOString().split('T')[0],
+      expires: '',
+      clauses: ['Scope of Work','Payment Terms','Intellectual Property','Confidentiality','Termination'],
+      clauseContent: {},
+      signed: false
+    };
+    db.contracts.push(activeContract);
+  }
+  if(!activeContract.clauseContent) activeContract.clauseContent = {};
+  // Pre-fill defaults
+  activeContract.clauses.forEach(c=>{ if(!activeContract.clauseContent[c]) activeContract.clauseContent[c] = STD_CLAUSES[c]||''; });
+  if(activeClauseIdx >= activeContract.clauses.length) activeClauseIdx = 0;
+
+  const ct = activeContract;
+  const cl = getClient(ct.clientId);
+  const [activeTab] = [window._ctActiveTab||'clauses'];
+
+  document.getElementById('page-contract-builder').innerHTML = `
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div class="flex items-center gap-3">
+        <button class="btn btn-ghost btn-sm" onclick="navigateTo('contracts')"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i></button>
+        <input class="form-control" style="width:300px;font-weight:600;" value="${escHtml(ct.title)}" oninput="activeContract.title=this.value;_refreshCtPreview()">
+        <span class="badge ${statusClass(ct.status)}">${ct.status}</span>
+        <span style="font-size:11px;color:var(--text-muted);">● Auto-saved</span>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <select class="form-control" style="width:170px;" onchange="activeContract.clientId=this.value;_refreshCtPreview()">
+          <option value="">Select client…</option>
+          ${db.clients.map(c=>`<option value="${c.id}" ${ct.clientId===c.id?'selected':''}>${escHtml(c.name)}</option>`).join('')}
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="_saveContractNow()"><i data-lucide="save" style="width:13px;height:13px;"></i> Save</button>
+        <button class="btn btn-secondary btn-sm" onclick="showToast('PDF export in production build','info')"><i data-lucide="download" style="width:13px;height:13px;"></i> PDF</button>
+        <button class="btn btn-primary btn-sm" onclick="_saveContractNow();sendContract(activeContract.id)"><i data-lucide="send" style="width:13px;height:13px;"></i> Send for Signing</button>
+      </div>
+    </div>
+
+    <div class="builder-wrap">
+      <!-- Left panel: tabs -->
+      <div class="builder-panel" style="overflow-y:auto;">
+        <!-- Tab bar -->
+        <div style="display:flex;border-bottom:1px solid var(--border);padding:0 8px;">
+          ${[['clauses','Clauses'],['signature','Signature'],['settings','Settings']].map(([t,l])=>`
+            <button onclick="window._ctActiveTab='${t}';renderContractBuilder(activeContract.id)"
+              style="padding:12px 14px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid ${(window._ctActiveTab||'clauses')===t?'var(--primary)':'transparent'};color:${(window._ctActiveTab||'clauses')===t?'var(--primary)':'var(--text-secondary)'};transition:all .15s;">${l}</button>
+          `).join('')}
+        </div>
+
+        ${(window._ctActiveTab||'clauses')==='clauses' ? `
+        <!-- Clause library -->
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;">Clauses</span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm btn-secondary" onclick="_addCtClause()"><i data-lucide="plus" style="width:12px;height:12px;"></i> Add</button>
+            <button class="btn btn-sm btn-secondary" onclick="_openClauseLibrary()"><i data-lucide="library" style="width:12px;height:12px;"></i> Library</button>
+          </div>
+        </div>
+        <div id="ct-clause-list">
+          ${ct.clauses.map((c,i)=>`
+            <div class="section-item ${i===activeClauseIdx?'active':''}" onclick="activeClauseIdx=${i};_renderCtClauseEditor()" style="cursor:pointer;">
+              <i data-lucide="file-text" style="width:13px;height:13px;color:var(--text-muted);flex-shrink:0;"></i>
+              <span style="flex:1;">${escHtml(c)}</span>
+              <button class="btn btn-icon btn-ghost" style="padding:2px;" onclick="event.stopPropagation();_removeCtClause(${i})"><i data-lucide="x" style="width:11px;height:11px;"></i></button>
+            </div>`).join('')}
+        </div>
+        <div id="ct-clause-editor" style="padding:16px;border-top:1px solid var(--border);">
+          ${_buildCtClauseEditor(ct.clauses[activeClauseIdx], ct)}
+        </div>
+
+        ` : (window._ctActiveTab==='signature' ? `
+        <!-- Signature panel -->
+        <div style="padding:20px;display:flex;flex-direction:column;gap:16px;">
+          <div style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Your Signature</div>
+          <div style="display:flex;gap:8px;margin-bottom:6px;">
+            ${[['type','Type'],['draw','Draw'],['upload','Upload']].map(([m,l])=>`
+              <button onclick="window._sigMode='${m}';_renderSigPanel()"
+                style="flex:1;padding:8px 6px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;border:1px solid ${(window._sigMode||'type')===m?'var(--primary)':'var(--border)'};background:${(window._sigMode||'type')===m?'var(--primary-light)':'var(--surface)'};color:${(window._sigMode||'type')===m?'var(--primary)':'var(--text-secondary)'};">${l}</button>
+            `).join('')}
+          </div>
+          <div id="sig-panel-content">${_buildSigPanel()}</div>
+          <button class="btn btn-primary" onclick="_applySignature()"><i data-lucide="pen-line" style="width:14px;height:14px;"></i> Apply Signature</button>
+          ${ct.signed?`
+            <div style="background:var(--success-bg);border-radius:var(--radius);padding:12px;display:flex;align-items:center;gap:10px;">
+              <i data-lucide="check-circle" style="width:16px;height:16px;color:var(--success-text);"></i>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--success-text);">Contract Signed</div>
+                <div style="font-size:11px;color:var(--text-muted);">${ct.signedAt||'Just now'}</div>
+              </div>
+            </div>`:
+            `<div style="font-size:12px;color:var(--text-muted);text-align:center;">Sign to make this contract binding</div>`}
+        </div>
+
+        ` : `
+        <!-- Settings panel -->
+        <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+          <div class="form-group"><label class="form-label">Contract Value ($)</label>
+            <input class="form-control" type="number" value="${ct.value||0}" oninput="activeContract.value=+this.value;_refreshCtPreview()"></div>
+          <div class="form-group"><label class="form-label">Start Date</label>
+            <input class="form-control" type="date" value="${ct.created||''}" oninput="activeContract.created=this.value;_refreshCtPreview()"></div>
+          <div class="form-group"><label class="form-label">End Date</label>
+            <input class="form-control" type="date" value="${ct.expires||''}" oninput="activeContract.expires=this.value;_refreshCtPreview()"></div>
+          <div class="form-group"><label class="form-label">Status</label>
+            <select class="form-control" onchange="activeContract.status=this.value;_refreshCtPreview()">
+              ${['draft','sent','viewed','signed','active','expired'].map(s=>`<option value="${s}" ${ct.status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+            </select></div>
+          <div class="form-group"><label class="form-label">Payment Terms</label>
+            <select class="form-control">
+              <option>50% upfront, 50% on completion</option>
+              <option>100% upfront</option>
+              <option>Monthly retainer</option>
+              <option>Net 30</option>
+            </select></div>
+        </div>
+        `)}
+      </div>
+
+      <!-- Right: Preview -->
+      <div class="builder-preview">
+        <div class="preview-doc" id="ct-preview">
+          ${_buildCtPreview(ct)}
+        </div>
+      </div>
+    </div>
+  `;
+  lucide.createIcons();
+};
+
+function _buildCtClauseEditor(clauseName, ct){
+  if(!clauseName) return '<div style="color:var(--text-muted);font-size:13px;">Select a clause to edit</div>';
+  const content = escHtml(ct.clauseContent[clauseName]||'');
+  return `
+    <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">${escHtml(clauseName)}</div>
+    <textarea class="form-control" rows="9" placeholder="Clause content…"
+      oninput="activeContract.clauseContent['${clauseName}']=this.value;_refreshCtPreview()"
+    >${content}</textarea>`;
+}
+
+function _renderCtClauseEditor(){
+  if(!activeContract) return;
+  const el = document.getElementById('ct-clause-editor');
+  if(el) el.innerHTML = _buildCtClauseEditor(activeContract.clauses[activeClauseIdx], activeContract);
+  document.querySelectorAll('#ct-clause-list .section-item').forEach((el,i)=>{
+    el.classList.toggle('active', i===activeClauseIdx);
+  });
+}
+
+function _refreshCtPreview(){
+  const el = document.getElementById('ct-preview');
+  if(el && activeContract) el.innerHTML = _buildCtPreview(activeContract);
+  saveToStorage();
+}
+
+function _buildCtPreview(ct){
+  if(!ct) return '';
+  const cl = getClient(ct.clientId);
+  const cc = ct.clauseContent || {};
+  return `
+    <div style="padding:40px;border-bottom:3px solid var(--primary);">
+      <div style="font-size:22px;font-weight:800;margin-bottom:4px;">SERVICE AGREEMENT</div>
+      <div style="font-size:14px;font-weight:600;color:var(--primary);">${escHtml(ct.title)}</div>
+      <div style="display:flex;gap:24px;margin-top:16px;flex-wrap:wrap;">
+        <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Client</div>
+          <div style="font-size:13px;font-weight:600;">${escHtml(cl.name||'—')}</div>
+          <div style="font-size:12px;color:var(--text-secondary);">${escHtml(cl.company||'')}</div></div>
+        <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Provider</div>
+          <div style="font-size:13px;font-weight:600;">${escHtml(db.user.name)}</div></div>
+        <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Date</div>
+          <div style="font-size:13px;font-weight:600;">${fmtDate(ct.created)}</div></div>
+        ${ct.value?`<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Value</div>
+          <div style="font-size:13px;font-weight:700;color:var(--primary);">${fmtCurrency(ct.value)}</div></div>`:''}
+      </div>
+    </div>
+    <div style="padding:32px 40px;">
+      ${ct.clauses.map(c=>`
+        <div style="margin-bottom:24px;">
+          <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">${escHtml(c)}</div>
+          <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;white-space:pre-line;">${escHtml(cc[c]||STD_CLAUSES[c]||'Content goes here…')}</div>
+        </div>`).join('')}
+      <div style="margin-top:32px;padding-top:24px;border-top:2px solid var(--border);">
+        <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;">Signatures</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+          <div>
+            <div style="border-bottom:2px solid var(--border);margin-bottom:6px;height:40px;display:flex;align-items:flex-end;padding-bottom:4px;">
+              ${ct.signed?`<span style="font-family:'Pacifico',cursive,serif;font-size:22px;color:var(--primary);">${escHtml(db.user.name)}</span>`:''}
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);">Service Provider — ${escHtml(db.user.name)}</div>
+            ${ct.signedAt?`<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${ct.signedAt}</div>`:''}
+          </div>
+          <div>
+            <div style="border-bottom:2px solid var(--border);margin-bottom:6px;height:40px;"></div>
+            <div style="font-size:11px;color:var(--text-muted);">Client — ${escHtml(cl.name||'—')}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function _buildSigPanel(){
+  const mode = window._sigMode || 'type';
+  if(mode==='type') return `
+    <div class="form-group">
+      <label class="form-label">Type your signature</label>
+      <input class="form-control" id="sig-typed" placeholder="Your full name" style="font-size:16px;" value="${db.user.name}">
+      <div id="sig-preview" style="margin-top:10px;padding:16px;background:var(--bg);border-radius:var(--radius);min-height:50px;font-family:'Pacifico',cursive,serif;font-size:26px;color:var(--primary);text-align:center;">${db.user.name}</div>
+    </div>
+    <script>document.getElementById('sig-typed').oninput=function(){document.getElementById('sig-preview').textContent=this.value;}<\/script>`;
+  if(mode==='draw') return `
+    <div>
+      <canvas id="sig-canvas" width="320" height="100" style="border:1px solid var(--border);border-radius:var(--radius);cursor:crosshair;width:100%;touch-action:none;background:#fff;"></canvas>
+      <button onclick="document.getElementById('sig-canvas').getContext('2d').clearRect(0,0,320,100)" class="btn btn-sm btn-secondary mt-2">Clear</button>
+      <script>
+        (function(){
+          var c=document.getElementById('sig-canvas'),ctx=c.getContext('2d'),drawing=false;
+          ctx.strokeStyle='#5347CE';ctx.lineWidth=2;ctx.lineCap='round';
+          function pos(e){var r=c.getBoundingClientRect();var t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)*(320/r.width),y:(t.clientY-r.top)*(100/r.height)};}
+          c.addEventListener('mousedown',e=>{drawing=true;ctx.beginPath();var p=pos(e);ctx.moveTo(p.x,p.y);});
+          c.addEventListener('mousemove',e=>{if(!drawing)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();});
+          c.addEventListener('mouseup',()=>drawing=false);
+          c.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;ctx.beginPath();var p=pos(e);ctx.moveTo(p.x,p.y);});
+          c.addEventListener('touchmove',e=>{e.preventDefault();if(!drawing)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();});
+          c.addEventListener('touchend',()=>drawing=false);
+        })();
+      <\/script>
+    </div>`;
+  return `
+    <div class="form-group">
+      <label class="form-label">Upload signature image</label>
+      <input type="file" accept="image/*" class="form-control" onchange="var r=new FileReader();r.onload=e=>{var img=document.getElementById('sig-img');img.src=e.target.result;img.style.display='block';window._uploadedSig=e.target.result;};r.readAsDataURL(this.files[0])">
+      <img id="sig-img" style="display:none;max-height:80px;margin-top:10px;border-radius:var(--radius-sm);">
+    </div>`;
+}
+
+function _renderSigPanel(){
+  const el = document.getElementById('sig-panel-content');
+  if(el) el.innerHTML = _buildSigPanel();
+}
+
+function _applySignature(){
+  if(!activeContract) return;
+  const mode = window._sigMode || 'type';
+  let sigName = db.user.name;
+  if(mode==='type'){ const inp=document.getElementById('sig-typed'); if(inp) sigName=inp.value; }
+  activeContract.signed = true;
+  activeContract.signedAt = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  activeContract.sigName = sigName;
+  activeContract.status = 'signed';
+  _saveContractNow();
+  showToast('Contract signed!','success');
+  renderContractBuilder(activeContract.id);
+}
+
+function _saveContractNow(){
+  if(!activeContract) return;
+  const idx = db.contracts.findIndex(x=>x.id===activeContract.id);
+  if(idx>=0) db.contracts[idx] = activeContract;
+  else db.contracts.push(activeContract);
+  saveToStorage();
+  showToast('Contract saved!','success');
+}
+
+function _addCtClause(){
+  if(!activeContract) return;
+  const name = prompt('Clause name:','Custom Clause');
+  if(name && name.trim()){
+    activeContract.clauses.push(name.trim());
+    activeContract.clauseContent[name.trim()] = '';
+    activeClauseIdx = activeContract.clauses.length-1;
+    renderContractBuilder(activeContract.id);
+  }
+}
+
+function _removeCtClause(i){
+  if(!activeContract) return;
+  activeContract.clauses.splice(i,1);
+  if(activeClauseIdx >= activeContract.clauses.length) activeClauseIdx = Math.max(0, activeContract.clauses.length-1);
+  renderContractBuilder(activeContract.id);
+}
+
+function _openClauseLibrary(){
+  const lib = STD_CLAUSES || {};
+  const items = Object.keys(lib);
+  openModal(`
+    <div class="modal-header"><span class="modal-title">Clause Library</span><button class="btn btn-ghost btn-icon btn-sm" onclick="closeModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button></div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;">
+        ${items.map(name=>`
+          <div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div>
+              <div style="font-size:13px;font-weight:600;">${escHtml(name)}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${escHtml(lib[name].substring(0,80))}…</div>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="
+              if(!activeContract.clauses.includes('${name}')){activeContract.clauses.push('${name}');activeContract.clauseContent['${name}']='${lib[name].replace(/'/g,'&#39;').replace(/\n/g,' ')}';activeClauseIdx=activeContract.clauses.length-1;}
+              closeModal();renderContractBuilder(activeContract.id);showToast('Clause added!','success');">Add</button>
+          </div>`).join('')}
+      </div>
+    </div>`);
+  lucide.createIcons();
+}
+
+window._addCtClause = _addCtClause;
+window._removeCtClause = _removeCtClause;
+window._renderCtClauseEditor = _renderCtClauseEditor;
+window._refreshCtPreview = _refreshCtPreview;
+window._applySignature = _applySignature;
+window._renderSigPanel = _renderSigPanel;
+window._openClauseLibrary = _openClauseLibrary;
+window._saveContractNow = _saveContractNow;
+
+// ─────────────────────────────────────────────────────────────────
+// INVOICE BUILDER — fully functional
+// ─────────────────────────────────────────────────────────────────
+window.renderInvoiceBuilder = function(invId){
+  if(invId && invId!=='new'){
+    activeInvoice = db.invoices.find(i=>i.id===invId)||null;
+    if(activeInvoice && activeInvoice.lineItems) invLineItems = [...activeInvoice.lineItems];
+    else if(activeInvoice) invLineItems = [{desc:activeInvoice.project||'',qty:1,rate:activeInvoice.amount||0,tax:9}];
+  }
+  if(!activeInvoice || invId==='new'){
+    const num = 'INV-'+String(db.invoices.length+1).padStart(4,'0');
+    activeInvoice = {
+      id: 'inv_'+Date.now(),
+      num, clientId:'', project:'', amount:0, tax:0, discount:0, total:0,
+      issued: new Date().toISOString().split('T')[0],
+      due: '', status:'draft', notes:'', type:'one-time', lateFee:1.5,
+      lineItems: []
+    };
+    invLineItems = [{desc:'',qty:1,rate:0,tax:9}];
+    db.invoices.push(activeInvoice);
+  }
+  const inv = activeInvoice;
+  const cl = getClient(inv.clientId);
+
+  document.getElementById('page-invoice-builder').innerHTML = `
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div class="flex items-center gap-3">
+        <button class="btn btn-ghost btn-sm" onclick="navigateTo('invoices')"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i></button>
+        <span style="font-size:16px;font-weight:700;">${escHtml(inv.num)}</span>
+        <span class="badge ${statusClass(inv.status)}">${inv.status}</span>
+        <span style="font-size:11px;color:var(--text-muted);">● Auto-saved</span>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <button class="btn btn-secondary btn-sm" onclick="_saveInvoiceNow()"><i data-lucide="save" style="width:13px;height:13px;"></i> Save</button>
+        <button class="btn btn-secondary btn-sm" onclick="showToast('PDF download in production build','info')"><i data-lucide="download" style="width:13px;height:13px;"></i> PDF</button>
+        <button class="btn btn-secondary btn-sm" onclick="_copyPaymentLink()"><i data-lucide="link" style="width:13px;height:13px;"></i> Payment Link</button>
+        <button class="btn btn-primary btn-sm" onclick="_saveInvoiceNow();_sendInvoiceModal()"><i data-lucide="send" style="width:13px;height:13px;"></i> Send</button>
+      </div>
+    </div>
+
+    <div class="builder-wrap">
+      <div class="builder-panel" style="overflow-y:auto;">
+        <div style="padding:20px;display:flex;flex-direction:column;gap:16px;">
+
+          <!-- Invoice Type -->
+          <div class="form-group">
+            <label class="form-label">Invoice Type</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;" id="inv-type-btns">
+              ${[['one-time','One-time'],['recurring','Recurring'],['deposit','Deposit'],['milestone','Milestone']].map(([v,l])=>`
+                <button onclick="_setInvType('${v}',this)" style="padding:6px 12px;border-radius:var(--radius-full);font-size:12px;font-weight:500;cursor:pointer;border:1px solid ${(inv.type||'one-time')===v?'var(--primary)':'var(--border)'};background:${(inv.type||'one-time')===v?'var(--primary-light)':'var(--surface)'};color:${(inv.type||'one-time')===v?'var(--primary)':'var(--text-secondary)'};">${l}</button>`).join('')}
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Client *</label>
+              <select class="form-control" onchange="activeInvoice.clientId=this.value;_refreshInvPreview()">
+                <option value="">Select client…</option>
+                ${db.clients.map(c=>`<option value="${c.id}" ${inv.clientId===c.id?'selected':''}>${escHtml(c.name)} — ${escHtml(c.company||'')}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Project / Description</label>
+              <input class="form-control" value="${escHtml(inv.project)}" placeholder="Project name" oninput="activeInvoice.project=this.value;_refreshInvPreview()">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Issue Date</label><input class="form-control" type="date" value="${inv.issued}" oninput="activeInvoice.issued=this.value;_refreshInvPreview()"></div>
+            <div class="form-group"><label class="form-label">Due Date</label><input class="form-control" type="date" value="${inv.due||''}" oninput="activeInvoice.due=this.value;_refreshInvPreview()"></div>
+          </div>
+
+          <!-- Recurring opts -->
+          <div id="recurring-opts" style="display:${(inv.type||'one-time')==='recurring'?'block':'none'};padding:14px;background:var(--primary-light);border-radius:var(--radius);border:1px solid var(--primary);">
+            <div style="font-size:12px;font-weight:600;color:var(--primary);margin-bottom:10px;">Recurring Schedule</div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Frequency</label>
+                <select class="form-control"><option>Weekly</option><option selected>Monthly</option><option>Quarterly</option><option>Annually</option></select>
+              </div>
+              <div class="form-group"><label class="form-label">End After</label>
+                <select class="form-control"><option>Never</option><option>3 months</option><option>6 months</option><option>12 months</option></select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Deposit opts -->
+          <div id="deposit-opts" style="display:${(inv.type||'one-time')==='deposit'?'block':'none'};padding:14px;background:var(--warning-bg);border-radius:var(--radius);border:1px solid var(--warning-text);">
+            <div style="font-size:12px;font-weight:600;color:var(--warning-text);margin-bottom:10px;">Deposit Settings</div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Deposit %</label><input class="form-control" type="number" value="${inv.depositPct||50}" oninput="activeInvoice.depositPct=+this.value;_refreshInvPreview()"></div>
+              <div class="form-group"><label class="form-label">Balance Due On</label><input class="form-control" type="date" value="${inv.balanceDue||''}"></div>
+            </div>
+          </div>
+
+          <!-- Line Items -->
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">Line Items</div>
+            <div style="overflow-x:auto;">
+              <table class="line-items-table">
+                <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Tax%</th><th>Total</th><th></th></tr></thead>
+                <tbody id="inv-line-items">
+                  ${invLineItems.map((li,i)=>`<tr>
+                    <td><input value="${escHtml(li.desc)}" placeholder="Service description" oninput="invLineItems[${i}].desc=this.value;_refreshInvPreview()"></td>
+                    <td><input type="number" value="${li.qty}" style="width:50px;" oninput="invLineItems[${i}].qty=+this.value;_refreshInvPreview()"></td>
+                    <td><input type="number" value="${li.rate}" style="width:80px;" oninput="invLineItems[${i}].rate=+this.value;_refreshInvPreview()"></td>
+                    <td><input type="number" value="${li.tax}" style="width:50px;" oninput="invLineItems[${i}].tax=+this.value;_refreshInvPreview()"></td>
+                    <td style="font-weight:600;white-space:nowrap;">$${(li.qty*li.rate).toLocaleString()}</td>
+                    <td><button onclick="invLineItems.splice(${i},1);renderInvoiceBuilder(activeInvoice.id)" style="background:none;border:none;cursor:pointer;color:var(--danger-text);"><i data-lucide="x" style="width:12px;height:12px;"></i></button></td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+            <button class="btn btn-sm btn-secondary mt-2" style="width:100%;" onclick="invLineItems.push({desc:'',qty:1,rate:0,tax:9});renderInvoiceBuilder(activeInvoice.id)">+ Add Line Item</button>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Discount ($)</label><input class="form-control" type="number" value="${inv.discount||0}" oninput="activeInvoice.discount=+this.value;_refreshInvPreview()"></div>
+            <div class="form-group"><label class="form-label">Late Fee (%/month)</label><input class="form-control" type="number" value="${inv.lateFee||1.5}" step="0.1" oninput="activeInvoice.lateFee=+this.value"></div>
+          </div>
+
+          <!-- Live totals -->
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;font-size:13px;display:flex;flex-direction:column;gap:8px;" id="inv-totals">
+            ${_buildInvTotalsHtml()}
+          </div>
+
+          <div class="form-group"><label class="form-label">Notes / Payment Instructions</label>
+            <textarea class="form-control" rows="3" placeholder="Bank details, payment notes…" oninput="activeInvoice.notes=this.value;_refreshInvPreview()">${escHtml(inv.notes||'')}</textarea>
+          </div>
+
+          <div class="flex gap-2 flex-wrap">
+            <button class="btn btn-secondary btn-sm" onclick="_saveInvoiceNow();markInvPaid(activeInvoice.id)"><i data-lucide="check-circle" style="width:13px;height:13px;"></i> Mark Paid</button>
+            <button class="btn btn-secondary btn-sm" onclick="showToast('Payment reminder sent!','success')"><i data-lucide="bell" style="width:13px;height:13px;"></i> Reminder</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteInvoice(activeInvoice.id)" style="background:var(--danger-bg);color:var(--danger-text);border:1px solid var(--danger-text);"><i data-lucide="trash-2" style="width:13px;height:13px;"></i> Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Preview -->
+      <div class="builder-preview">
+        <div class="preview-doc" id="inv-preview">
+          ${_buildInvoicePreviewHtml(inv)}
+        </div>
+      </div>
+    </div>
+  `;
+  lucide.createIcons();
+};
+
+function _buildInvTotalsHtml(){
+  const sub  = invLineItems.reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax  = invLineItems.reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  const disc = (activeInvoice&&activeInvoice.discount)||0;
+  const tot  = sub+tax-disc;
+  if(activeInvoice){ activeInvoice.amount=sub; activeInvoice.total=tot; }
+  return `
+    <div class="flex justify-between"><span style="color:var(--text-secondary);">Subtotal</span><span>${fmtCurrency(sub)}</span></div>
+    <div class="flex justify-between"><span style="color:var(--text-secondary);">Tax</span><span>${fmtCurrency(tax)}</span></div>
+    ${disc?`<div class="flex justify-between"><span style="color:var(--success-text);">Discount</span><span style="color:var(--success-text);">-${fmtCurrency(disc)}</span></div>`:''}
+    <div class="flex justify-between fw-700" style="border-top:1px solid var(--border);padding-top:8px;font-size:15px;color:var(--primary);"><span>Total Due</span><span>${fmtCurrency(tot)}</span></div>`;
+}
+
+function _buildInvoicePreviewHtml(inv){
+  if(!inv) return '';
+  const cl  = getClient(inv.clientId);
+  const sub  = invLineItems.reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax  = invLineItems.reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  const disc = inv.discount||0;
+  const tot  = sub+tax-disc;
+  const depositAmt = inv.type==='deposit' ? (tot*(inv.depositPct||50)/100) : null;
+
+  return `
+    <div style="padding:36px 40px;border-bottom:3px solid var(--primary);">
+      <div class="flex justify-between items-start mb-4">
+        <div>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.5px;">INVOICE</div>
+          <div style="font-size:13px;color:var(--primary);font-weight:600;">${escHtml(inv.num)}</div>
+          ${inv.type&&inv.type!=='one-time'?`<span style="font-size:10px;font-weight:700;background:var(--primary-light);color:var(--primary);padding:2px 8px;border-radius:99px;text-transform:uppercase;">${inv.type}</span>`:''}
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:16px;font-weight:700;">${escHtml(db.user.name)}</div>
+          <div style="font-size:12px;color:var(--text-muted);">DealSuite Account</div>
+        </div>
+      </div>
+      <div class="flex justify-between" style="margin-top:20px;flex-wrap:wrap;gap:16px;">
+        <div>
+          <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Bill To</div>
+          <div style="font-weight:600;font-size:14px;">${escHtml(cl.name||'Client Name')}</div>
+          <div style="color:var(--text-secondary);font-size:13px;">${escHtml(cl.company||'')}</div>
+          <div style="color:var(--text-secondary);font-size:13px;">${escHtml(cl.email||'')}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="margin-bottom:6px;"><span style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Issue Date</span><br><span style="font-size:13px;font-weight:500;">${fmtDate(inv.issued)}</span></div>
+          ${inv.due?`<div><span style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Due Date</span><br><span style="font-size:13px;font-weight:500;color:${inv.status==='overdue'?'var(--danger-text)':'inherit'};">${fmtDate(inv.due)}</span></div>`:''}
+        </div>
+      </div>
+    </div>
+    <div style="padding:28px 40px;">
+      ${inv.project?`<div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:16px;">Re: ${escHtml(inv.project)}</div>`:''}
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:20px;">
+        <thead><tr style="background:var(--bg);">${['Description','Qty','Rate','Tax','Amount'].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.04em;">${h}</th>`).join('')}</tr></thead>
+        <tbody>${invLineItems.map(li=>`<tr style="border-bottom:1px solid var(--border-light);">
+          <td style="padding:10px;">${escHtml(li.desc)||'—'}</td>
+          <td style="padding:10px;">${li.qty}</td>
+          <td style="padding:10px;">${fmtCurrency(li.rate)}</td>
+          <td style="padding:10px;">${li.tax}%</td>
+          <td style="padding:10px;font-weight:600;">${fmtCurrency(li.qty*li.rate)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+      <div style="float:right;width:240px;font-size:13px;">
+        <div class="flex justify-between" style="padding:6px 0;"><span style="color:var(--text-secondary);">Subtotal</span><span>${fmtCurrency(sub)}</span></div>
+        <div class="flex justify-between" style="padding:6px 0;"><span style="color:var(--text-secondary);">Tax</span><span>${fmtCurrency(tax)}</span></div>
+        ${disc?`<div class="flex justify-between" style="padding:6px 0;color:var(--success-text);"><span>Discount</span><span>-${fmtCurrency(disc)}</span></div>`:''}
+        <div class="flex justify-between" style="padding:10px 0;border-top:2px solid var(--primary);font-size:16px;font-weight:700;color:var(--primary);"><span>Total</span><span>${fmtCurrency(tot)}</span></div>
+        ${depositAmt!=null?`<div style="margin-top:8px;padding:8px 10px;background:var(--warning-bg);border-radius:var(--radius-sm);text-align:center;font-size:13px;font-weight:600;color:var(--warning-text);">Deposit Due Now: ${fmtCurrency(depositAmt)}</div>`:''}
+      </div>
+      <div style="clear:both;padding-top:20px;margin-top:20px;border-top:1px solid var(--border);">
+        <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Notes</div>
+        <div style="font-size:13px;color:var(--text-secondary);">${escHtml(inv.notes||'Thank you for your business!')}</div>
+        ${inv.lateFee?`<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Late payments subject to ${inv.lateFee}% monthly fee.</div>`:''}
+      </div>
+    </div>`;
+}
+
+function _refreshInvPreview(){
+  const el = document.getElementById('inv-preview');
+  if(el && activeInvoice) el.innerHTML = _buildInvoicePreviewHtml(activeInvoice);
+  const totEl = document.getElementById('inv-totals');
+  if(totEl) totEl.innerHTML = _buildInvTotalsHtml();
+  saveToStorage();
+}
+
+function _setInvType(type, btn){
+  if(activeInvoice) activeInvoice.type = type;
+  document.querySelectorAll('#inv-type-btns button').forEach(b=>{
+    b.style.borderColor='var(--border)'; b.style.background='var(--surface)'; b.style.color='var(--text-secondary)';
+  });
+  btn.style.borderColor='var(--primary)'; btn.style.background='var(--primary-light)'; btn.style.color='var(--primary)';
+  const ro = document.getElementById('recurring-opts');
+  const do_ = document.getElementById('deposit-opts');
+  if(ro) ro.style.display = type==='recurring'?'block':'none';
+  if(do_) do_.style.display = type==='deposit'?'block':'none';
+  _refreshInvPreview();
+}
+
+function _saveInvoiceNow(){
+  if(!activeInvoice) return;
+  const sub = invLineItems.reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax = invLineItems.reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  activeInvoice.amount = sub;
+  activeInvoice.total = sub+tax-(activeInvoice.discount||0);
+  activeInvoice.lineItems = [...invLineItems];
+  const idx = db.invoices.findIndex(x=>x.id===activeInvoice.id);
+  if(idx>=0) db.invoices[idx] = activeInvoice;
+  else db.invoices.push(activeInvoice);
+  saveToStorage();
+  showToast('Invoice saved!','success');
+}
+
+function _sendInvoiceModal(){
+  if(!activeInvoice) return;
+  const inv = activeInvoice;
+  const cl = getClient(inv.clientId);
+  openModal(`
+    <div class="modal-header"><span class="modal-title">Send Invoice</span><button class="btn btn-ghost btn-icon btn-sm" onclick="closeModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <div class="form-group"><label class="form-label">To</label><input class="form-control" value="${escHtml(cl.email||'')}" placeholder="client@email.com"></div>
+      <div class="form-group"><label class="form-label">Subject</label><input class="form-control" value="Invoice ${escHtml(inv.num)} from ${escHtml(db.user.name)}"></div>
+      <div class="form-group"><label class="form-label">Message</label><textarea class="form-control" rows="4">Hi ${escHtml(cl.name?cl.name.split(' ')[0]:'there')},\n\nPlease find your invoice attached for ${escHtml(inv.project||'services rendered')}.\n\nTotal due: ${fmtCurrency(inv.total||0)}\n\nThank you for your business!</textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="closeModal();activeInvoice.status='sent';_saveInvoiceNow();renderInvoicesList();showToast('Invoice sent!','success')"><i data-lucide="send" style="width:14px;height:14px;"></i> Send Invoice</button>
+    </div>`);
+  lucide.createIcons();
+}
+
+function _copyPaymentLink(){
+  const link = 'https://pay.dealsuite.io/' + (activeInvoice?.id||'inv');
+  try{ navigator.clipboard.writeText(link); } catch(e){}
+  showToast('Payment link copied!','success');
+}
+
+window._setInvType = _setInvType;
+window._saveInvoiceNow = _saveInvoiceNow;
+window._sendInvoiceModal = _sendInvoiceModal;
+window._copyPaymentLink = _copyPaymentLink;
+window._refreshInvPreview = _refreshInvPreview;
+
+// ─────────────────────────────────────────────────────────────────
+// EXPENSE MODULE — fully functional create/edit/delete
+// ─────────────────────────────────────────────────────────────────
+window.openAddExpense = function(editId){
+  const exp = editId ? db.expenses.find(e=>e.id===editId) : null;
+  openModal(`
+    <div class="modal-header"><span class="modal-title">${exp?'Edit':'Add'} Expense</span><button class="btn btn-ghost btn-icon btn-sm" onclick="closeModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Description *</label><input class="form-control" id="exp-desc" value="${escHtml(exp?exp.desc:'')}" placeholder="Expense description"></div>
+        <div class="form-group"><label class="form-label">Amount ($) *</label><input class="form-control" type="number" id="exp-amount" value="${exp?exp.amount:''}" placeholder="0.00"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Category</label>
+          <select class="form-control" id="exp-cat">
+            ${(EXPENSE_CATS||['Software','Travel','Office','Marketing','Meals','Other']).map(c=>`<option ${(exp&&exp.category===c)?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Date</label><input class="form-control" type="date" id="exp-date" value="${exp?exp.date:new Date().toISOString().split('T')[0]}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Client (optional)</label>
+          <select class="form-control" id="exp-client">
+            <option value="">No client</option>
+            ${db.clients.map(c=>`<option value="${c.id}" ${(exp&&exp.clientId===c.id)?'selected':''}>${escHtml(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Invoice (optional)</label>
+          <select class="form-control" id="exp-inv">
+            <option value="">No invoice</option>
+            ${db.invoices.map(i=>`<option value="${i.id}" ${(exp&&exp.invoiceId===i.id)?'selected':''}>${escHtml(i.num)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-control" id="exp-notes" rows="2" placeholder="Optional notes…">${escHtml(exp?exp.notes||'':'')}</textarea>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+          <input type="checkbox" id="exp-billable" ${(!exp||exp.billable)?'checked':''} style="accent-color:var(--primary);width:14px;height:14px;">
+          Billable to client
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="_saveExpense('${editId||''}')"><i data-lucide="check" style="width:14px;height:14px;"></i> ${exp?'Update':'Add'} Expense</button>
+    </div>`);
+  lucide.createIcons();
+};
+
+window._saveExpense = function(editId){
+  const desc = document.getElementById('exp-desc')?.value?.trim();
+  const amount = parseFloat(document.getElementById('exp-amount')?.value);
+  if(!desc){ showToast('Enter a description','error'); return; }
+  if(!amount || amount<=0){ showToast('Enter a valid amount','error'); return; }
+  const expData = {
+    desc, amount,
+    category: document.getElementById('exp-cat')?.value||'Other',
+    date: document.getElementById('exp-date')?.value||new Date().toISOString().split('T')[0],
+    clientId: document.getElementById('exp-client')?.value||'',
+    invoiceId: document.getElementById('exp-inv')?.value||'',
+    notes: document.getElementById('exp-notes')?.value||'',
+    billable: document.getElementById('exp-billable')?.checked||false,
+  };
+  if(editId){
+    const idx = db.expenses.findIndex(e=>e.id===editId);
+    if(idx>=0) db.expenses[idx] = {...db.expenses[idx], ...expData};
+  } else {
+    db.expenses.push({id:'exp_'+Date.now(), ...expData});
+  }
+  saveToStorage();
+  closeModal();
+  renderExpenses();
+  showToast(editId?'Expense updated!':'Expense added!','success');
+};
+
+window._deleteExpense = function(id){
+  openConfirm('Delete Expense','Delete this expense? This cannot be undone.',()=>{
+    db.expenses = db.expenses.filter(e=>e.id!==id);
+    saveToStorage();
+    renderExpenses();
+    showToast('Expense deleted','success');
+  });
+};
+
+// Override renderExpenses to wire Add button
+const _prevRenderExpenses = window.renderExpenses;
+window.renderExpenses = function(){
+  _prevRenderExpenses();
+  setTimeout(()=>{
+    // Wire "Add Expense" button
+    const addBtn = document.querySelector('#page-expenses .btn-primary[onclick*="openAddExpenseModal"], #page-expenses .btn-primary');
+    if(addBtn && addBtn.textContent.includes('Add')) addBtn.onclick = ()=>openAddExpense();
+    // Wire edit/delete buttons
+    document.querySelectorAll('#page-expenses [data-exp-id]').forEach(el=>{
+      const id = el.dataset.expId;
+      const action = el.dataset.action;
+      if(action==='edit') el.onclick = ()=>openAddExpense(id);
+      if(action==='delete') el.onclick = ()=>_deleteExpense(id);
+    });
+  }, 0);
+};
+
+// Patch renderExpenses to use new openAddExpense
+window.__patchedExpenseAdd = true;
+</script>
 </body>
 </html>
 
