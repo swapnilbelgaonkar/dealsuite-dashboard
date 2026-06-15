@@ -6481,11 +6481,9 @@ function _buildSigPanel(){
   if(mode==='type') return `
     <div class="form-group">
       <label class="form-label">Type your signature</label>
-      <input class="form-control" id="sig-typed" placeholder="Your full name" style="font-size:16px;" value="${db.user.name}">
-      <div id="sig-preview" style="margin-top:10px;padding:16px;background:var(--bg);border-radius:var(--radius);min-height:50px;font-family:'Pacifico',cursive,serif;font-size:26px;color:var(--primary);text-align:center;">${db.user.name}</div>
-    </div>
-    <div id="sig-typed-placeholder"></div>`;
-setTimeout(function(){var el=document.getElementById('sig-typed');if(el)el.oninput=function(){var p=document.getElementById('sig-preview');if(p)p.textContent=this.value;};},100);
+      <input class="form-control" id="sig-typed" placeholder="Your full name" style="font-size:16px;" value="${escHtml(db.user.name)}" oninput="document.getElementById('sig-preview').textContent=this.value">
+      <div id="sig-preview" style="margin-top:10px;padding:16px;background:var(--bg);border-radius:var(--radius);min-height:50px;font-family:'Pacifico',cursive,serif;font-size:26px;color:var(--primary);text-align:center;">${escHtml(db.user.name)}</div>
+    </div>`;
   if(mode==='draw') return `
     <div>
       <canvas id="sig-canvas" width="320" height="100" style="border:1px solid var(--border);border-radius:var(--radius);cursor:crosshair;width:100%;touch-action:none;background:#fff;"></canvas>
