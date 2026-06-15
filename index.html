@@ -6708,7 +6708,7 @@ window.renderInvoiceBuilder = function(invId){
       </div>
       <div class="flex gap-2 flex-wrap">
         <button class="btn btn-secondary btn-sm" onclick="_saveInvoiceNow()"><i data-lucide="save" style="width:13px;height:13px;"></i> Save</button>
-        <button class="btn btn-secondary btn-sm" onclick="showToast('PDF download in production build','info')"><i data-lucide="download" style="width:13px;height:13px;"></i> PDF</button>
+        <button class="btn btn-secondary btn-sm" onclick="_downloadInvoicePDF(activeInvoice.id)"><i data-lucide="download" style="width:13px;height:13px;"></i> Download PDF</button>
         <button class="btn btn-secondary btn-sm" onclick="_copyPaymentLink()"><i data-lucide="link" style="width:13px;height:13px;"></i> Payment Link</button>
         <button class="btn btn-primary btn-sm" onclick="_saveInvoiceNow();_sendInvoiceModal()"><i data-lucide="send" style="width:13px;height:13px;"></i> Send</button>
       </div>
@@ -6943,15 +6943,139 @@ function _sendInvoiceModal(){
 }
 
 function _copyPaymentLink(){
-  const link = 'https://pay.dealsuite.io/' + (activeInvoice?.id||'inv');
-  try{ navigator.clipboard.writeText(link); } catch(e){}
-  showToast('Payment link copied!','success');
+  if(!activeInvoice){ showToast('Save invoice first','error'); return; }
+  const inv = activeInvoice;
+  const cl = getClient(inv.clientId);
+  const link = window.location.origin + window.location.pathname + '#pay-' + inv.id;
+  try{ navigator.clipboard.writeText(link); showToast('Payment link copied to clipboard!','success'); }
+  catch(e){
+    openModal(`
+      <div class="modal-header"><span class="modal-title">Payment Link</span><button class="btn btn-ghost btn-icon btn-sm" onclick="closeModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button></div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+        <div style="font-size:13px;color:var(--text-secondary);">Share this link with <strong>${escHtml(cl.name||'your client')}</strong> to collect payment for <strong>${escHtml(inv.num)}</strong> (${fmtCurrency(inv.total||0)}).</div>
+        <input class="form-control" value="${link}" onclick="this.select()" readonly style="font-size:12px;font-family:monospace;">
+        <button class="btn btn-primary" onclick="navigator.clipboard.writeText('${link}');showToast('Copied!','success');closeModal()">Copy Link</button>
+      </div>`);
+  }
+}
+
+function _downloadInvoicePDF(invId){
+  const inv = db.invoices.find(x=>x.id===invId)||activeInvoice;
+  if(!inv){ showToast('Invoice not found','error'); return; }
+  const cl = getClient(inv.clientId);
+  const items = inv.lineItems && inv.lineItems.length ? inv.lineItems : invLineItems;
+  const sub  = items.reduce((s,i)=>s+(i.qty*i.rate),0);
+  const tax  = items.reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+  const disc = inv.discount||0;
+  const tot  = sub+tax-disc;
+  const depositAmt = inv.type==='deposit' ? (tot*(inv.depositPct||50)/100) : null;
+  const accentColor = '#5347CE';
+
+  const lineRows = items.map(li=>`
+    <tr>
+      <td>${escHtml(li.desc)||'—'}</td>
+      <td style="text-align:center;">${li.qty}</td>
+      <td style="text-align:right;">${fmtCurrency(li.rate)}</td>
+      <td style="text-align:center;">${li.tax}%</td>
+      <td style="text-align:right;font-weight:600;">${fmtCurrency(li.qty*li.rate)}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>${escHtml(inv.num)} — ${escHtml(inv.project||'Invoice')}</title>
+    <style>
+      @page { size:A4; margin:20mm 18mm 22mm 18mm; }
+      *{box-sizing:border-box;margin:0;padding:0;}
+      html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;font-size:13px;line-height:1.6;background:#fff;}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid ${accentColor};}
+      .inv-label{font-size:28px;font-weight:800;letter-spacing:-1px;color:#111827;}
+      .inv-num{font-size:13px;color:${accentColor};font-weight:600;margin-top:4px;}
+      .inv-type-badge{display:inline-block;font-size:9px;font-weight:700;background:${accentColor}22;color:${accentColor};padding:2px 8px;border-radius:99px;text-transform:uppercase;margin-top:6px;}
+      .sender{text-align:right;}
+      .sender-name{font-size:16px;font-weight:700;}
+      .sender-sub{font-size:12px;color:#6B7280;margin-top:2px;}
+      .meta-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;flex-wrap:wrap;gap:16px;}
+      .bill-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9CA3AF;margin-bottom:5px;}
+      .bill-name{font-size:14px;font-weight:700;}
+      .bill-sub{font-size:12px;color:#6B7280;margin-top:2px;}
+      .dates{text-align:right;}
+      .date-item{margin-bottom:8px;}
+      .date-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9CA3AF;display:block;margin-bottom:2px;}
+      .date-val{font-size:13px;font-weight:600;}
+      .project-ref{font-size:13px;font-weight:600;color:#6B7280;margin-bottom:14px;}
+      table{width:100%;border-collapse:collapse;margin-bottom:20px;}
+      thead tr{background:#F9FAFB;}
+      th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#6B7280;border-bottom:2px solid #E5E7EB;text-transform:uppercase;letter-spacing:.05em;}
+      td{padding:10px;border-bottom:1px solid #F3F4F6;font-size:13px;}
+      tr:last-child td{border-bottom:none;}
+      .totals-wrap{display:flex;justify-content:flex-end;margin-top:4px;}
+      .totals{width:240px;}
+      .tot-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#6B7280;}
+      .tot-final{display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid ${accentColor};font-size:16px;font-weight:800;color:${accentColor};}
+      .deposit-box{margin-top:10px;padding:10px 14px;background:#FEF3C7;border-radius:6px;text-align:center;font-size:13px;font-weight:600;color:#92400E;}
+      .notes{margin-top:28px;padding-top:18px;border-top:1px solid #E5E7EB;}
+      .notes-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9CA3AF;margin-bottom:6px;}
+      .notes-text{font-size:13px;color:#6B7280;line-height:1.7;}
+      .late-fee{font-size:11px;color:#9CA3AF;margin-top:6px;}
+      @media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    </style></head><body>
+    <div class="header">
+      <div>
+        <div class="inv-label">INVOICE</div>
+        <div class="inv-num">${escHtml(inv.num)}</div>
+        ${inv.type&&inv.type!=='one-time'?`<div class="inv-type-badge">${inv.type}</div>`:''}
+      </div>
+      <div class="sender">
+        <div class="sender-name">${escHtml(db.user.name)}</div>
+        <div class="sender-sub">${escHtml(db.user.company||'DealSuite Account')}</div>
+        ${db.user.email?`<div class="sender-sub">${escHtml(db.user.email)}</div>`:''}
+      </div>
+    </div>
+    <div class="meta-row">
+      <div>
+        <div class="bill-label">Bill To</div>
+        <div class="bill-name">${escHtml(cl.name||'—')}</div>
+        ${cl.company?`<div class="bill-sub">${escHtml(cl.company)}</div>`:''}
+        ${cl.email?`<div class="bill-sub">${escHtml(cl.email)}</div>`:''}
+      </div>
+      <div class="dates">
+        <div class="date-item"><span class="date-label">Issue Date</span><span class="date-val">${fmtDate(inv.issued)}</span></div>
+        ${inv.due?`<div class="date-item"><span class="date-label">Due Date</span><span class="date-val">${fmtDate(inv.due)}</span></div>`:''}
+      </div>
+    </div>
+    ${inv.project?`<div class="project-ref">Re: ${escHtml(inv.project)}</div>`:''}
+    <table>
+      <thead><tr>
+        <th>Description</th><th style="text-align:center;">Qty</th>
+        <th style="text-align:right;">Rate</th><th style="text-align:center;">Tax</th>
+        <th style="text-align:right;">Amount</th>
+      </tr></thead>
+      <tbody>${lineRows}</tbody>
+    </table>
+    <div class="totals-wrap"><div class="totals">
+      <div class="tot-row"><span>Subtotal</span><span>${fmtCurrency(sub)}</span></div>
+      <div class="tot-row"><span>Tax</span><span>${fmtCurrency(tax)}</span></div>
+      ${disc?`<div class="tot-row" style="color:#059669;"><span>Discount</span><span>-${fmtCurrency(disc)}</span></div>`:''}
+      <div class="tot-final"><span>Total Due</span><span>${fmtCurrency(tot)}</span></div>
+      ${depositAmt!=null?`<div class="deposit-box">Deposit Due Now: ${fmtCurrency(depositAmt)}</div>`:''}
+    </div></div>
+    ${inv.notes||inv.lateFee?`<div class="notes">
+      <div class="notes-label">Notes</div>
+      <div class="notes-text">${escHtml(inv.notes||'Thank you for your business!')}</div>
+      ${inv.lateFee?`<div class="late-fee">Late payments subject to ${inv.lateFee}% monthly fee.</div>`:''}
+    </div>`:''}
+    <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>
+  </body></html>`;
+
+  const win = window.open('','_blank','width=900,height=700');
+  if(win){ win.document.write(html); win.document.close(); }
+  else showToast('Allow popups to download PDF','error');
 }
 
 window._setInvType = _setInvType;
 window._saveInvoiceNow = _saveInvoiceNow;
 window._sendInvoiceModal = _sendInvoiceModal;
 window._copyPaymentLink = _copyPaymentLink;
+window._downloadInvoicePDF = _downloadInvoicePDF;
 window._refreshInvPreview = _refreshInvPreview;
 
 // ─────────────────────────────────────────────────────────────────
