@@ -3529,54 +3529,145 @@ function deleteExpense(id){
 function renderClientPortal(){
   const page=document.getElementById('page-client-portal');
   if(!page) return;
+
+  // Gather real data: proposals (sent/accepted) and invoices (sent/overdue)
+  const proposals = db.proposals.filter(p=>['sent','accepted','draft'].includes(p.status));
+  const invoices  = db.invoices.filter(i=>['sent','overdue','draft'].includes(i.status));
+
+  function portalBadge(s){
+    const map={draft:'#94a3b8',sent:'#3b82f6',accepted:'#22c55e',overdue:'#ef4444',paid:'#22c55e'};
+    return `<span style="background:${map[s]||'#94a3b8'}22;color:${map[s]||'#94a3b8'};border:1px solid ${map[s]||'#94a3b8'}44;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">${s}</span>`;
+  }
+
+  const proposalCards = proposals.length ? proposals.map(p=>{
+    const cl = getClient(p.clientId)||{name:'Client',email:''};
+    const items = p.feeItems||p.fees||[];
+    const sub = items.reduce((s,i)=>s+(i.qty||1)*(i.rate||i.price||0),0);
+    const tax  = sub*0.09;
+    const tot  = sub+tax;
+    const itemRows = items.length ? items.map(i=>`
+      <tr style="border-bottom:1px solid var(--border-light);">
+        <td style="padding:9px 10px;">${escHtml(i.desc||i.name||'Service')}</td>
+        <td style="padding:9px 10px;text-align:center;">${i.qty||1}</td>
+        <td style="padding:9px 10px;text-align:right;">${fmtCurrency(i.rate||i.price||0)}</td>
+        <td style="padding:9px 10px;text-align:right;font-weight:600;">${fmtCurrency((i.qty||1)*(i.rate||i.price||0))}</td>
+      </tr>`).join('') :
+      `<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-muted);font-size:13px;">No fee items</td></tr>`;
+    return `
+    <div class="card mb-4" style="overflow:hidden;">
+      <div style="background:linear-gradient(135deg,var(--primary),var(--lavender));padding:36px 36px 28px;color:#fff;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:10px;font-weight:600;letter-spacing:.12em;opacity:.7;margin-bottom:6px;">PROPOSAL · ${escHtml(p.num||'')}</div>
+            <div style="font-size:22px;font-weight:700;margin-bottom:8px;">${escHtml(p.title||'Untitled Proposal')}</div>
+            <div style="opacity:.8;font-size:13px;">Prepared for <strong>${escHtml(cl.name)}</strong></div>
+            ${p.validUntil?`<div style="margin-top:6px;font-size:12px;opacity:.6;">Valid until ${fmtDate(p.validUntil)}</div>`:''}
+          </div>
+          <div>${portalBadge(p.status)}</div>
+        </div>
+      </div>
+      <div style="padding:28px 36px;">
+        ${(p.sections||[]).length ? (p.sections||[]).map(s=>`
+          <div style="margin-bottom:20px;">
+            <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">${escHtml(s.title||'')}</div>
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">${escHtml(s.content||'')}</div>
+          </div>`).join('') : ''}
+        <div style="margin-bottom:22px;">
+          <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Fee Summary</div>
+          <table style="width:100%;font-size:13px;border-collapse:collapse;">
+            <thead><tr>${['Service','Qty','Rate','Total'].map(h=>`<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);font-weight:600;">${h}</th>`).join('')}</tr></thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+          <div style="margin-top:10px;background:var(--bg);border-radius:var(--radius);padding:12px 14px;font-size:13px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px;"><span style="color:var(--text-secondary);">Subtotal</span><span>${fmtCurrency(sub)}</span></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Tax (9%)</span><span>${fmtCurrency(tax)}</span></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-size:15px;font-weight:700;color:var(--primary);"><span>Total</span><span>${fmtCurrency(tot)}</span></div>
+          </div>
+        </div>
+        <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">Leave a comment or request changes</div>
+          <textarea class="form-control" rows="3" placeholder="Add your comments or questions here…"></textarea>
+          <button class="btn btn-secondary btn-sm mt-2" onclick="showToast('Comment submitted to ${escHtml(db.user.name)}','success')">Send Comment</button>
+        </div>
+      </div>
+      ${p.status!=='accepted'?`
+      <div style="background:var(--surface);border-top:1px solid var(--border);padding:14px 36px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="font-size:13px;color:var(--text-secondary);">By accepting you agree to the terms outlined in this proposal.</div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-secondary btn-sm" onclick="showToast('Proposal declined','info')">Decline</button>
+          <button class="btn btn-primary btn-sm" onclick="db.proposals.find(x=>x.id==='${p.id}').status='accepted';saveToStorage();renderClientPortal();showToast('Proposal accepted!','success')"><i data-lucide="check-circle" style="width:13px;height:13px;"></i> Accept Proposal</button>
+        </div>
+      </div>`:
+      `<div style="background:#22c55e11;border-top:1px solid #22c55e33;padding:12px 36px;font-size:13px;font-weight:600;color:#16a34a;">✓ Proposal Accepted</div>`}
+    </div>`;
+  }).join('') : `<div class="card mb-4" style="padding:40px;text-align:center;color:var(--text-muted);">
+    <i data-lucide="file-text" style="width:32px;height:32px;margin-bottom:12px;opacity:.3;"></i>
+    <div style="font-size:14px;">No proposals sent yet</div>
+  </div>`;
+
+  const invoiceCards = invoices.length ? invoices.map(inv=>{
+    const cl = getClient(inv.clientId)||{name:'Client',email:''};
+    const items = inv.lineItems||[];
+    const sub = items.reduce((s,i)=>s+(i.qty*i.rate),0);
+    const tax = items.reduce((s,i)=>s+(i.qty*i.rate*i.tax/100),0);
+    const tot = sub+tax-(inv.discount||0);
+    const isOverdue = inv.due && new Date(inv.due)<new Date() && inv.status!=='paid';
+    return `
+    <div class="card mb-3" style="overflow:hidden;">
+      <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;">INVOICE · ${escHtml(inv.num||'')}</div>
+          <div style="font-size:16px;font-weight:700;">${escHtml(inv.project||'Invoice')}</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">For ${escHtml(cl.name)}${inv.due?' · Due '+fmtDate(inv.due):''}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:22px;font-weight:700;color:var(--primary);">${fmtCurrency(tot)}</div>
+          <div style="margin-top:4px;">${portalBadge(isOverdue?'overdue':inv.status)}</div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;">
+        <table style="width:100%;font-size:13px;border-collapse:collapse;">
+          <thead><tr>${['Description','Qty','Rate','Tax','Total'].map(h=>`<th style="text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);font-weight:600;">${h}</th>`).join('')}</tr></thead>
+          <tbody>${items.length?items.map(li=>`
+            <tr style="border-bottom:1px solid var(--border-light);">
+              <td style="padding:9px 8px;">${escHtml(li.desc||'—')}</td>
+              <td style="padding:9px 8px;">${li.qty}</td>
+              <td style="padding:9px 8px;">${fmtCurrency(li.rate)}</td>
+              <td style="padding:9px 8px;">${li.tax}%</td>
+              <td style="padding:9px 8px;font-weight:600;">${fmtCurrency(li.qty*li.rate)}</td>
+            </tr>`).join(''):`<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text-muted);">No items</td></tr>`}
+          </tbody>
+        </table>
+        <div style="margin-top:10px;max-width:260px;margin-left:auto;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="color:var(--text-secondary);">Subtotal</span><span>${fmtCurrency(sub)}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="color:var(--text-secondary);">Tax</span><span>${fmtCurrency(tax)}</span></div>
+          ${inv.discount?`<div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="color:var(--text-secondary);">Discount</span><span>-${fmtCurrency(inv.discount)}</span></div>`:''}
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);font-weight:700;font-size:14px;color:var(--primary);"><span>Total Due</span><span>${fmtCurrency(tot)}</span></div>
+        </div>
+        ${inv.notes?`<div style="margin-top:12px;font-size:12px;color:var(--text-secondary);font-style:italic;">${escHtml(inv.notes)}</div>`:''}
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="showToast('Redirecting to secure payment…','info')"><i data-lucide="credit-card" style="width:13px;height:13px;"></i> Pay Now</button>
+          <button class="btn btn-secondary btn-sm" onclick="_downloadInvoicePDF('${inv.id}')"><i data-lucide="download" style="width:13px;height:13px;"></i> Download PDF</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') : '';
+
   page.innerHTML=`
-    <div style="max-width:780px;margin:0 auto;padding:32px 20px;">
-      <div style="text-align:center;margin-bottom:40px;">
-        <div style="width:44px;height:44px;background:linear-gradient(135deg,var(--primary),var(--lavender));border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px;margin:0 auto 12px;">DS</div>
-        <div style="font-size:13px;color:var(--text-secondary);">Powered by DealSuite</div>
+    <div style="max-width:800px;margin:0 auto;padding:32px 20px;">
+      <div style="text-align:center;margin-bottom:36px;">
+        <div style="width:48px;height:48px;background:linear-gradient(135deg,var(--primary),var(--lavender));border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px;margin:0 auto 10px;">DS</div>
+        <div style="font-size:15px;font-weight:700;">${escHtml(db.user.name||'DealSuite')}</div>
+        <div style="font-size:12px;color:var(--text-secondary);">Client Portal · Powered by DealSuite</div>
       </div>
-      <div class="card mb-4" style="overflow:hidden;">
-        <div style="background:linear-gradient(135deg,var(--primary),var(--lavender));padding:48px 40px;color:#fff;">
-          <div style="font-size:10px;font-weight:600;letter-spacing:.1em;opacity:.7;margin-bottom:8px;">PROPOSAL</div>
-          <div style="font-size:24px;font-weight:700;margin-bottom:10px;">Brand Identity & Website Design</div>
-          <div style="opacity:.8;font-size:13px;">Prepared for <strong>Sarah Johnson</strong> · Pixel Studio Co.</div>
-          <div style="margin-top:10px;font-size:12px;opacity:.6;">Valid until December 10, 2024</div>
-        </div>
-        <div style="padding:32px 40px;">
-          ${['Introduction','Scope of Work','Deliverables','Timeline'].map(s=>`
-            <div style="margin-bottom:22px;">
-              <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">${s}</div>
-              <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">${getSectionDefault(s)||'Content goes here…'}</div>
-            </div>`).join('')}
-          <div style="margin-bottom:22px;">
-            <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Fee Summary</div>
-            <table style="width:100%;font-size:13px;border-collapse:collapse;">
-              <thead><tr>${['Service','Qty','Rate','Total'].map(h=>`<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);font-weight:600;">${h}</th>`).join('')}</tr></thead>
-              <tbody>
-                ${[['Web Design',1,3500],['Development',1,4000],['SEO Setup',1,1000]].map(([d,q,r])=>`<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:10px;">${d}</td><td style="padding:10px;">${q}</td><td style="padding:10px;">${fmtCurrency(r)}</td><td style="padding:10px;font-weight:600;">${fmtCurrency(q*r)}</td></tr>`).join('')}
-              </tbody>
-            </table>
-            <div style="margin-top:12px;background:var(--bg);border-radius:var(--radius);padding:14px;font-size:13px;">
-              <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:var(--text-secondary);">Subtotal</span><span>$8,500.00</span></div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:var(--text-secondary);">Tax (9%)</span><span>$765.00</span></div>
-              <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-size:15px;font-weight:700;color:var(--primary);"><span>Total</span><span>$9,265.00</span></div>
-            </div>
-          </div>
-          <div style="background:var(--bg);border-radius:var(--radius);padding:16px;margin-bottom:0;">
-            <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">Leave a comment or request changes</div>
-            <textarea class="form-control" rows="3" placeholder="Add your comments or questions here…"></textarea>
-            <button class="btn btn-secondary btn-sm mt-2" onclick="showToast('Comment submitted','success')">Send Comment</button>
-          </div>
-        </div>
-      </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--shadow-lg);gap:12px;flex-wrap:wrap;position:sticky;bottom:20px;">
-        <div><div style="font-size:14px;font-weight:600;">Ready to move forward?</div><div style="font-size:12px;color:var(--text-secondary);">By accepting you agree to the terms outlined in this proposal.</div></div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button class="btn btn-secondary" onclick="showToast('Proposal declined','error')">Decline</button>
-          <button class="btn btn-secondary" onclick="showToast('PDF downloading…','info')"><i data-lucide="download" style="width:13px;height:13px;"></i> Download PDF</button>
-          <button class="btn btn-primary btn-lg" onclick="showToast('Proposal accepted! Contract will be sent shortly.','success')"><i data-lucide="check-circle" style="width:15px;height:15px;"></i> Accept Proposal</button>
-        </div>
-      </div>
+
+      ${proposals.length?`<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;">Proposals</div>${proposalCards}`:''}
+      ${invoices.length?`<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em;margin:${proposals.length?'28px':0} 0 14px;">Invoices</div>${invoiceCards}`:''}
+      ${!proposals.length&&!invoices.length?`<div style="text-align:center;padding:80px 20px;color:var(--text-muted);">
+        <i data-lucide="inbox" style="width:40px;height:40px;opacity:.3;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;"></i>
+        <div style="font-size:15px;font-weight:600;margin-bottom:6px;">Nothing to show yet</div>
+        <div style="font-size:13px;">Send a proposal or invoice to populate the client portal.</div>
+      </div>`:''}
     </div>`;
   lucide.createIcons();
 }
@@ -4620,11 +4711,20 @@ window.sendInvoice = function(id){
       </div>
     </div>`, [{
     label:'Send Invoice', primary:true, action:()=>{
+      const toV   = document.getElementById('si-email')?.value.trim()||cl.email||'';
+      const subjV = document.getElementById('si-subj')?.value.trim()||inv.num;
+      const msgV  = document.getElementById('si-msg')?.value.trim()||'';
+      if(!toV){ showToast('Please enter recipient email','error'); return; }
+      const mailto = 'mailto:'+encodeURIComponent(toV)
+        +'?subject='+encodeURIComponent(subjV)
+        +'&body='+encodeURIComponent(msgV);
       if(!inv.id||inv.id==='new'){inv.id='inv'+Date.now();db.invoices.push(inv);}
       inv.status='sent';
       logActivity('invoice','sent',inv.num+' — '+fmtCurrency(inv.total||inv.amount),inv.clientId);
-      showToast('Invoice sent!','success');
+      saveToStorage();
+      showToast('Opening your email client…','success');
       renderInvoicesList();
+      window.open(mailto,'_self');
     }
   }]);
 };
@@ -6970,7 +7070,7 @@ function _sendInvoiceModal(){
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="closeModal();activeInvoice.status='sent';_saveInvoiceNow();renderInvoicesList();showToast('Invoice sent!','success')"><i data-lucide="send" style="width:14px;height:14px;"></i> Send Invoice</button>
+      <button class="btn btn-primary" onclick="_doSendInvoiceEmail()"><i data-lucide="send" style="width:14px;height:14px;"></i> Send Invoice</button>
     </div>`);
   lucide.createIcons();
 }
@@ -7110,6 +7210,25 @@ window._sendInvoiceModal = _sendInvoiceModal;
 window._copyPaymentLink = _copyPaymentLink;
 window._downloadInvoicePDF = _downloadInvoicePDF;
 window._refreshInvPreview = _refreshInvPreview;
+
+function _doSendInvoiceEmail(){
+  const toEl   = document.querySelector('#modal-root .modal-body input[placeholder="client@email.com"]');
+  const subjEl = document.querySelector('#modal-root .modal-body input:not([placeholder])');
+  const msgEl  = document.querySelector('#modal-root .modal-body textarea');
+  const to   = toEl   ? toEl.value.trim()   : '';
+  const subj = subjEl ? subjEl.value.trim() : '';
+  const msg  = msgEl  ? msgEl.value.trim()  : '';
+  if(!to){ showToast('Please enter a recipient email','error'); return; }
+  const mailto = 'mailto:'+encodeURIComponent(to)
+    +'?subject='+encodeURIComponent(subj)
+    +'&body='+encodeURIComponent(msg);
+  closeModal();
+  if(activeInvoice){ activeInvoice.status='sent'; _saveInvoiceNow(); }
+  renderInvoicesList();
+  showToast('Opening your email client…','success');
+  window.open(mailto,'_self');
+}
+window._doSendInvoiceEmail = _doSendInvoiceEmail;
 
 // ─────────────────────────────────────────────────────────────────
 // EXPENSE MODULE — fully functional create/edit/delete
