@@ -5975,9 +5975,13 @@ window.renderProposalBuilder = function(propId){
           <option value="">Select client…</option>
           ${db.clients.map(c=>`<option value="${c.id}" ${p.clientId===c.id?'selected':''}>${escHtml(c.name)}</option>`).join('')}
         </select>
-        <button class="btn btn-secondary btn-sm" onclick="_saveProposalNow()"><i data-lucide="save" style="width:13px;height:13px;"></i> Save Draft</button>
-        <button class="btn btn-secondary btn-sm" onclick="showToast('Client portal preview: use Preview in the portal','info')"><i data-lucide="eye" style="width:13px;height:13px;"></i> Preview</button>
-        <button class="btn btn-primary btn-sm" onclick="_saveProposalNow();sendProposal(activeProposal.id)"><i data-lucide="send" style="width:13px;height:13px;"></i> Send</button>
+        <button class="btn btn-secondary btn-sm" onclick="_saveProposalNow(true)"><i data-lucide="save" style="width:13px;height:13px;"></i> Save Draft</button>
+        <button class="btn btn-secondary btn-sm" onclick="_downloadProposalPDF(activeProposal.id)" style="gap:5px;"><i data-lucide="download" style="width:13px;height:13px;"></i> Download PDF</button>
+        ${p.status==='accepted'
+          ? `<button class="btn btn-sm" style="background:#D1FAE5;color:#065F46;border:1px solid #A7F3D0;" onclick="openConfirm('Create Contract','Create a contract from this accepted proposal?',()=>_createContractFromProposal(activeProposal.id))"><i data-lucide="file-text" style="width:13px;height:13px;"></i> Create Contract</button>`
+          : `<button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;" onclick="openConfirm('Approve Proposal','Mark this proposal as accepted? You can create a contract from it separately.',()=>{activeProposal.status='accepted';_saveProposalNow(true);renderProposalBuilder(activeProposal.id);showToast('Proposal approved!','success');})"><i data-lucide="thumbs-up" style="width:13px;height:13px;"></i> Approve</button>`
+        }
+        <button class="btn btn-primary btn-sm" onclick="_saveProposalNow(true);sendProposal(activeProposal.id)"><i data-lucide="send" style="width:13px;height:13px;"></i> Send</button>
       </div>
     </div>
 
